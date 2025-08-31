@@ -35,5 +35,3 @@ CREATE TRIGGER update_analyses_updated_at
     BEFORE UPDATE ON analyses 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
-
-COMMENT ON TABLE analyses IS 'Stores web page analysis requests and results';

@@ -2,21 +2,20 @@ package usecases
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAnalysisUseCase(t *testing.T) {
-	uc := &AnalysisUseCase{}
+	uc := &analysisUseCase{}
 
 	assert.NotNil(t, uc)
 }
 
 func TestAnalysisUseCaseFields(t *testing.T) {
-	uc := &AnalysisUseCase{
-		timeout: 300 * time.Second,
+	uc := &analysisUseCase{
+		cacheTTL: 300,
 	}
 
-	assert.Equal(t, 300*time.Second, uc.timeout)
+	assert.Equal(t, 300, uc.cacheTTL)
 }

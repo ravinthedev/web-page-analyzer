@@ -2,7 +2,7 @@ package repositories
 
 import (
 	"context"
-	"web-page-analyzer/internal/domain/entities"
+	"webpage-analyzer/internal/domain/entities"
 
 	"github.com/google/uuid"
 )

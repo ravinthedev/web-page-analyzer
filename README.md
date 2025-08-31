@@ -1,84 +1,121 @@
 # Web Page Analyzer
 
-A Go application for analyzing web pages and extracting useful information.
+A simple web application that analyzes web pages to extract useful information like HTML version, headings, links, and login forms. Built with Go backend and React frontend.
 
-## What We Added
+## What It Does
 
-Complete Backend Implementation
-- Clean Architecture with Domain, Application, Infrastructure, and Presentation layers
-- PostgreSQL database with full CRUD operations
-- Redis caching and job queue management
-- Circuit breaker HTTP client for external requests
-- Prometheus monitoring and metrics collection
-- Structured logging with Zap
-- Rate limiting and middleware chain
-- Configuration management with Viper
+- Analyzes web pages for HTML structure and content
+- Detects internal/external links and their accessibility
+- Identifies login forms and page metadata
+- Supports both synchronous and asynchronous processing
+- Provides clean API endpoints for integration
 
-Domain Layer
-- Analysis entities with full status tracking
-- Repository interfaces for data access
-- Service interfaces for business logic
+## Prerequisites
 
-Infrastructure Layer
-- PostgreSQL repository implementation
-- Redis cache and job queue repositories
-- Circuit breaker HTTP client
-- Monitoring metrics collection
+- Go 1.21+
+- Node.js 16+
+- Docker and Docker Compose
+- PostgreSQL 15+
+- Redis 7+
 
-Application Layer
-- Use cases with business logic
-- DTOs for API communication
-- Job processing and retry logic
+## Quick Start
 
-Presentation Layer
-- REST API endpoints
-- Middleware for logging, rate limiting, CORS
-- Error handling and validation
-- Request/response processing
+1. Clone the repository
+2. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
+3. Access the application:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8080
+   - Health check: http://localhost:8080/health
 
 ## Project Structure
 
-```
-web-page-analyzer/
-├── cmd/api/                    # API server entry point
-├── config/                     # Configuration files
-├── internal/                   # Internal application code
-│   ├── domain/                # Domain layer
-│   ├── application/           # Application layer
-│   ├── infrastructure/        # Infrastructure layer
-│   └── presentation/          # Presentation layer
-├── migrations/                # Database migrations
-├── monitoring/                # Prometheus configuration
-├── pkg/                       # Shared packages
-│   ├── config/               # Configuration management
-│   ├── logger/               # Structured logging
-│   └── errors/               # Error handling
-├── docker-compose.yml         # Development environment
-└── Dockerfile                 # Multi-stage build
-```
+- `cmd/api/` - Main Go API server
+- `internal/` - Core application logic
+- `frontend/` - React web interface
+- `config/` - Configuration files
+- `migrations/` - Database schema
 
-## Running
+## Main Features
 
-```bash
-go mod tidy
-go run cmd/api/main.go
-```
+- **URL Analysis**: Submit URLs for detailed webpage analysis
+- **Async Processing**: Handle multiple URLs in background
+- **Caching**: Redis-based result caching for performance
+- **Rate Limiting**: Built-in protection against abuse
+- **Health Monitoring**: Prometheus metrics and health checks
 
-## API Endpoints
+## External Dependencies
 
-- GET / - API information
-- GET /health - Health check  
-- POST /api/v1/analyze - Analyze a web page
-- GET /api/v1/analyze/:id - Get analysis results by ID
+- PostgreSQL for data storage
+- Redis for caching and job queues
+- Prometheus for metrics collection
 
-## Features
+## Setup Instructions
 
-- Web page analysis with HTML parsing
-- Database storage with PostgreSQL
-- Redis caching for performance
-- Job queue for async processing
-- Circuit breaker for external requests
-- Rate limiting and security
-- Monitoring and metrics
-- Structured logging
-- Configuration management
+1. **Database Setup**:
+   - PostgreSQL runs on port 5432
+   - Redis runs on port 6379
+   - Migrations run automatically on startup
+
+2. **Backend Setup**:
+   - Configuration in `config/config.yaml`
+   - Environment variables override config
+   - Logs in structured JSON format
+
+3. **Frontend Setup**:
+   - React app with environment config
+   - URL validation and error handling
+   - Responsive design for mobile/desktop
+
+## Usage
+
+1. Open the web interface
+2. Enter a URL to analyze
+3. Choose sync or async processing
+4. View results with detailed breakdown
+5. Track job status for async requests
+
+## Key Technologies
+
+- **Backend**: Go, Gin, PostgreSQL, Redis
+- **Frontend**: React, CSS3, Fetch API
+- **DevOps**: Docker, Prometheus, health checks
+- **Validation**: Client-side URL validation, server-side sanitization
+
+## Challenges & Solutions
+
+- **Async Processing**: Replaced complex worker services with Go routines for simplicity
+- **Frontend Caching**: Implemented proper build process and cache busting
+- **Database Schema**: Used JSONB for flexible result storage
+- **Error Handling**: Comprehensive error messages and logging
+
+## Improvements
+
+- Add user authentication and job history
+- Implement result export (CSV, JSON)
+- Add batch URL processing
+- Enhance link accessibility checking
+- Add more HTML analysis features
+
+## Architecture Details
+
+For detailed technical architecture, design patterns, and implementation details, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Development
+
+- Run tests: `./test-coverage.sh`
+- Build: `go build ./cmd/api`
+- Frontend dev: `cd frontend && npm start`
+
+## API Documentation
+
+- Base URL: `http://localhost:8080`
+- Version: `/api/v1`
+- Endpoints: `/analyze`, `/analysis/:id`, `/analyses`
+- Health: `/health`, `/metrics`
+
+## License
+
+MIT License - feel free to use and modify.

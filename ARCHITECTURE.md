@@ -1,4 +1,4 @@
-# Web Page Analyzer - Technical Architecture Plan
+# Web Page Analyzer - Technical Architecture
 
 This document describes the technical implementation details, design patterns, and architectural decisions for the Web Page Analyzer application.
 

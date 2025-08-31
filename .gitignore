@@ -1,0 +1,34 @@
+# General OS files
+.DS_Store
+
+# Frontend dependencies
+frontend/node_modules/
+
+# Frontend env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Backend env files
+.env
+.env.*
+!.env.example
+
+# Frontend build output
+frontend/build/
+
+# Backend/build artifacts and binaries
+# Note: an existing tracked file won't be removed by this; run `git rm --cached <file>` to untrack
+/api
+/bin/
+build/
+dist/
+
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
