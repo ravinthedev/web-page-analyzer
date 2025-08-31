@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
-	"web-page-analyzer/internal/infrastructure/monitoring"
-	"web-page-analyzer/pkg/logger"
+	"webpage-analyzer/internal/infrastructure/monitoring"
+	"webpage-analyzer/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

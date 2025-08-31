@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 	"time"
-	"web-page-analyzer/pkg/logger"
+	"webpage-analyzer/pkg/logger"
 
 	"github.com/sony/gobreaker"
 	"go.uber.org/zap"

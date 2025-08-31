@@ -5,17 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"web-page-analyzer/internal/domain/entities"
-	"web-page-analyzer/internal/domain/repositories"
+	"webpage-analyzer/internal/domain/entities"
+	"webpage-analyzer/internal/domain/repositories"
 
 	"github.com/go-redis/redis/v8"
 )
 
 const (
-	JobQueueKey      = "analysis:jobs:pending"
-	RetryQueueKey    = "analysis:jobs:retry"
-	FailedQueueKey   = "analysis:jobs:failed"
-	ProcessingSetKey = "analysis:jobs:processing"
+	JobQueueKey       = "analysis:jobs:pending"
+	RetryQueueKey     = "analysis:jobs:retry"
+	FailedQueueKey    = "analysis:jobs:failed"
+	ProcessingSetKey  = "analysis:jobs:processing"
 )
 
 type jobQueueRepository struct {
@@ -107,26 +107,26 @@ func (r *jobQueueRepository) MarkJobCompleted(ctx context.Context, job *entities
 
 func (r *jobQueueRepository) MarkJobFailed(ctx context.Context, job *entities.AnalysisJob) error {
 	jobData, _ := json.Marshal(job)
-
+	
 	pipe := r.client.Pipeline()
 	pipe.SRem(ctx, ProcessingSetKey, jobData)
 	pipe.ZAdd(ctx, FailedQueueKey, &redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: jobData,
 	})
-
+	
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
 func (r *jobQueueRepository) RequeueRetryJobs(ctx context.Context) error {
 	now := time.Now().Unix()
-
+	
 	result, err := r.client.ZRangeByScore(ctx, RetryQueueKey, &redis.ZRangeBy{
 		Min: "0",
 		Max: fmt.Sprintf("%d", now),
 	}).Result()
-
+	
 	if err != nil {
 		return err
 	}

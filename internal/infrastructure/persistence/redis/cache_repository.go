@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"web-page-analyzer/internal/domain/repositories"
-	"web-page-analyzer/pkg/config"
+	"webpage-analyzer/internal/domain/repositories"
+	"webpage-analyzer/pkg/config"
 
 	"github.com/go-redis/redis/v8"
 )

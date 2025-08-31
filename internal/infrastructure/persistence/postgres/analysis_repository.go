@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"web-page-analyzer/internal/domain/entities"
-	"web-page-analyzer/internal/domain/repositories"
-	"web-page-analyzer/pkg/config"
+	"webpage-analyzer/internal/domain/entities"
+	"webpage-analyzer/internal/domain/repositories"
+	"webpage-analyzer/pkg/config"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
