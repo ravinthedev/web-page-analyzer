@@ -68,18 +68,18 @@ function App() {
   };
 
   const pollJobStatus = async (analysisId) => {
-    		try {
-			const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.analysis}/${analysisId}`);
-			const data = await response.json();
-			
-			if (response.ok) {
-				setAnalysisJobs(prev => 
-					prev.map(job => 
-						job.analysis_id === analysisId ? { ...job, ...data } : job
-					)
-				);
-				return data;
-			}
+    try {
+      const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.analysis}/${analysisId}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAnalysisJobs(prev => 
+          prev.map(job => 
+            job.analysis_id === analysisId ? { ...job, ...data } : job
+          )
+        );
+        return data;
+      }
     } catch (err) {
       console.error('Failed to poll job status:', err);
     }
@@ -87,8 +87,8 @@ function App() {
   };
 
   const handleViewDetails = async (job) => {
-          if (job.status === 'pending' || job.status === 'processing') {
-        const updatedJob = await pollJobStatus(job.analysis_id);
+    if (job.status === 'pending' || job.status === 'processing') {
+      const updatedJob = await pollJobStatus(job.analysis_id);
       if (updatedJob && updatedJob.status === 'completed') {
         setResults(updatedJob);
       }

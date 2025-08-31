@@ -5,22 +5,22 @@ export const validateAndNormalizeURL = (input) => {
 
   let url = input.trim();
 
-  	if (!url.match(/^https?:\/\//)) {
-		url = `https://${url}`;
-	}
+  if (!url.match(/^https?:\/\//)) {
+    url = `https://${url}`;
+  }
 
-	try {
-		const urlObj = new URL(url);
+  try {
+    const urlObj = new URL(url);
 
-		if (!urlObj.hostname || urlObj.hostname.length === 0) {
-			return { isValid: false, error: 'Please enter a valid domain name' };
-		}
+    if (!urlObj.hostname || urlObj.hostname.length === 0) {
+      return { isValid: false, error: 'Please enter a valid domain name' };
+    }
 
-		if (!urlObj.hostname.includes('.')) {
-			return { isValid: false, error: 'Please enter a valid domain name (e.g., example.com)' };
-		}
+    if (!urlObj.hostname.includes('.')) {
+      return { isValid: false, error: 'Please enter a valid domain name (e.g., example.com)' };
+    }
 
-		const parts = urlObj.hostname.split('.');
+    const parts = urlObj.hostname.split('.');
     if (parts.length < 2 || parts[parts.length - 1].length < 2) {
       return { isValid: false, error: 'Please enter a valid domain name with proper TLD' };
     }

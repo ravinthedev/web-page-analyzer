@@ -1,6 +1,6 @@
 # Web Page Analyzer
 
-A simple web application that analyzes web pages to extract useful information like HTML version, headings, links, and login forms. Built with Go backend and React frontend.
+A web application that analyzes web pages to extract useful information like HTML version, headings, links, and login forms. Built with Go backend and React frontend.
 
 ## What It Does
 
