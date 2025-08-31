@@ -7,6 +7,8 @@ import (
 	"web-page-analyzer/internal/domain/entities"
 	"web-page-analyzer/internal/domain/repositories"
 	"web-page-analyzer/internal/domain/services"
+
+	"github.com/google/uuid"
 )
 
 type AnalysisUseCase struct {
@@ -33,20 +35,20 @@ func NewAnalysisUseCase(
 	}
 }
 
-func (uc *AnalysisUseCase) AnalyzeURL(ctx context.Context, url string) (*entities.Analysis, error) {
+func (uc *AnalysisUseCase) AnalyzeURL(ctx context.Context, url string, userID, correlationID string) (*entities.Analysis, error) {
 	existing, err := uc.repo.GetByURL(ctx, url)
 	if err == nil && existing != nil && existing.Status == entities.StatusCompleted {
 		return existing, nil
 	}
 
-	analysis := entities.NewAnalysis(url)
+	analysis := entities.NewAnalysis(url, userID, correlationID)
 
 	if err := uc.repo.Create(ctx, analysis); err != nil {
 		return nil, err
 	}
 
 	if err := uc.performAnalysis(ctx, analysis); err != nil {
-		analysis.SetFailed()
+		analysis.MarkAsFailed(err.Error())
 		uc.repo.Update(ctx, analysis)
 		return nil, err
 	}
@@ -59,7 +61,11 @@ func (uc *AnalysisUseCase) AnalyzeURL(ctx context.Context, url string) (*entitie
 }
 
 func (uc *AnalysisUseCase) GetAnalysis(ctx context.Context, id string) (*entities.Analysis, error) {
-	return uc.repo.GetByID(ctx, id)
+	uuidID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, err
+	}
+	return uc.repo.GetByID(ctx, uuidID)
 }
 
 func (uc *AnalysisUseCase) performAnalysis(ctx context.Context, analysis *entities.Analysis) error {
@@ -78,7 +84,7 @@ func (uc *AnalysisUseCase) performAnalysis(ctx context.Context, analysis *entiti
 	result.LoadTime = time.Since(startTime)
 	result.StatusCode = statusCode
 
-	analysis.SetResult(result)
+	analysis.MarkAsCompleted(result)
 
 	return nil
 }

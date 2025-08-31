@@ -7,6 +7,7 @@ import (
 	"web-page-analyzer/internal/application/usecases"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AnalysisHandler struct {
@@ -30,7 +31,17 @@ func (h *AnalysisHandler) AnalyzeURL(c *gin.Context) {
 		return
 	}
 
-	analysis, err := h.analysisUseCase.AnalyzeURL(c.Request.Context(), request.URL)
+	userID := c.GetHeader("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	correlationID := c.GetHeader("X-Correlation-ID")
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	analysis, err := h.analysisUseCase.AnalyzeURL(c.Request.Context(), request.URL, userID, correlationID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Analysis failed",
