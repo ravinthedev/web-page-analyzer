@@ -1,32 +1,110 @@
 # Web Page Analyzer - Technical Architecture
 
-This document describes the technical implementation details and design patterns for the Web Page Analyzer application.
+This document describes the technical implementation details, design patterns, and architectural decisions for the Web Page Analyzer application.
 
 ## System Overview
 
-The application follows Clean Architecture principles with clear separation of concerns. Go backend API with React frontend interface. The system processes web page analysis requests either synchronously or asynchronously using Go routines.
+The application follows Clean Architecture principles with clear separation of concerns. We use Go for the backend API and React for the frontend interface. The system processes web page analysis requests either synchronously or asynchronously using Go routines.
 
 ## Core Architecture
 
-### Domain Layer
-- **Entities**: Analysis, AnalysisResult, LinkAnalysis, AnalysisJob
-- **Interfaces**: Repository contracts for data access
-- **Services**: HTML parsing and URL analysis logic
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND ARCHITECTURE                                        │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
+│  │   User Input    │    │   URL Validation│    │   API Request   │    │   Results Display│  │
+│  │                 │    │                 │    │                 │    │                 │  │
+│  │ • URL Form      │    │ • Format Check  │    │ • POST /analyze │    │ • Analysis Data │  │
+│  │ • Async Option  │    │ • Normalization │    │ • Sync/Async    │    │ • Job Status    │  │
+│  │ • Priority      │    │ • Error Display │    │ • Polling       │    │ • Links/Images  │  │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ HTTP Requests
+                                        ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    BACKEND (Go)                                           │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        PRESENTATION LAYER                                           │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
+│  │  │   Gin Router    │  │   Handlers      │  │   Middleware    │  │     Routes      │ │    │
+│  │  │                 │  │                 │  │                 │  │                 │ │    │
+│  │  │ • HTTP Server   │  │ • API Endpoints │  │ • Rate Limiting │  │ • Route Config  │ │    │
+│  │  │ • Request Flow  │  │ • Request Proc  │  │ • CORS          │  │ • Middleware    │ │    │
+│  │  │ • Response      │  │ • Response Gen  │  │ • Logging       │  │ • Error Handling│ │    │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
+│                                        │                                                    │
+│                                        │ Business Logic                                     │
+│                                        ▼                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        APPLICATION LAYER                                             │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
+│  │  │   Use Cases     │  │   Validation    │  │   Business Logic│  │   Orchestration │ │    │
+│  │  │                 │  │                 │  │                 │  │                 │ │    │
+│  │  │ • AnalyzeURL    │  │ • Input Valid   │  │ • URL Processing│  │ • Workflow Mgmt │ │    │
+│  │  │ • ProcessAsync  │  │ • Business Rules│  │ • HTML Parsing  │  │ • Error Handling│ │    │
+│  │  │ • GetAnalysis   │  │ • Constraints   │  │ • Data Analysis │  │ • Async Processing│ │    │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
+│                                        │                                                    │
+│                                        │ Domain Logic                                       │
+│                                        ▼                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                          DOMAIN LAYER                                                │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
+│  │  │   Entities      │  │   Services      │  │   Repositories  │  │   Interfaces    │ │    │
+│  │  │                 │  │                 │  │                 │  │                 │ │    │
+│  │  │ • Analysis      │  │ • Analyzer      │  │ • Analysis Repo │  │ • Repository    │ │    │
+│  │  │ • AnalysisResult│  │ • HTML Parser   │  │ • Cache Repo    │  │ • Service       │ │    │
+│  │  │ • LinkAnalysis  │  │ • HTTP Client   │  │ • Queue Repo    │  │ • Use Case      │ │    │
+│  │  │ • AnalysisJob   │  │ • URL Validator │  │ • Job Queue    │  │ • Handler       │ │    │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
+│                                        │                                                    │
+│                                        │ Data Access                                        │
+│                                        ▼                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                      INFRASTRUCTURE LAYER                                            │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
+│  │  │   PostgreSQL    │  │      Redis      │  │   HTTP Client   │  │   Monitoring    │ │    │
+│  │  │                 │  │                 │  │                 │  │                 │ │    │
+│  │  │ • Analysis Data │  │ • Result Cache  │  │ • Circuit Breaker│  │ • Prometheus    │ │    │
+│  │  │ • Job Queue     │  │ • Job Queue     │  │ • Timeout Mgmt  │  │ • Metrics       │ │    │
+│  │  │ • UUID Storage  │  │ • Priority Queue│  │ • HTTP Client   │  │ • Health Checks │ │    │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-### Application Layer
-- **Use Cases**: Business logic for analysis workflows
-- **Dependencies**: Repository and service interfaces
-- **Async Processing**: Go routine-based background processing
+### Architecture Flow:
+1. **Frontend** → Sends HTTP requests to Backend API
+2. **Presentation Layer** → Handles HTTP requests, applies middleware
+3. **Application Layer** → Orchestrates business logic and workflows
+4. **Domain Layer** → Contains core business entities and rules
+5. **Infrastructure Layer** → Manages data persistence and external services
 
-### Infrastructure Layer
-- **PostgreSQL**: Primary data storage with JSONB for flexible results
-- **Redis**: Caching layer and job queue management
-- **HTTP Client**: Circuit breaker pattern for external requests
+### Key Components:
 
-### Presentation Layer
-- **Gin Router**: HTTP request handling and middleware chain
-- **Handlers**: Request/response processing
-- **Middleware**: Rate limiting, logging, CORS, authentication
+#### **Frontend Flow:**
+- **User Input**: URL form with async option and priority setting
+- **URL Validation**: Client-side format checking and normalization
+- **API Request**: POST to /api/v1/analyze with sync/async modes
+- **Results Display**: Analysis data, job status, and metadata
+
+#### **Backend Layers:**
+- **Domain Layer**: Core business entities and interfaces
+- **Application Layer**: Business logic, validation, and use case orchestration
+- **Infrastructure Layer**: Data persistence and external service integration
+- **Presentation Layer**: HTTP handling and API endpoints
+
+#### **Data Flow:**
+- **Synchronous**: Direct analysis with immediate response
+- **Asynchronous**: Background processing with job tracking and polling
+- **Caching**: Redis-based result caching for performance
+- **Queue Management**: Redis-based priority job queue for async processing
 
 ## Technology Stack
 
@@ -50,7 +128,7 @@ The application follows Clean Architecture principles with clear separation of c
 - **Monitoring**: Prometheus metrics collection
 - **Health Checks**: Built-in endpoint monitoring
 
-## Design Patterns
+## Design Patterns Implemented
 
 ### Repository Pattern
 - Abstract data access through interfaces
@@ -67,6 +145,11 @@ The application follows Clean Architecture principles with clear separation of c
 - Rate limiting per IP address
 - Structured logging with correlation IDs
 - CORS and security headers
+
+### Strategy Pattern
+- Different analysis modes (sync/async)
+- Configurable timeout and retry strategies
+- Pluggable HTML parsing implementations
 
 ## Data Flow
 
@@ -140,6 +223,14 @@ The application follows Clean Architecture principles with clear separation of c
 - Method and header restrictions
 - Preflight request handling
 - Basic security headers
+
+### Security Gaps & Improvements
+- **Could Add**: XSS protection and HTML sanitization
+- **Could Add**: Advanced security headers (CSP, HSTS, etc.)
+- **Could Add**: Input content sanitization beyond URL format
+- **Could Add**: Rate limiting per user (currently only per IP)
+- **Could Add**: Request signature validation
+- **Could Add**: API key authentication
 
 ## Monitoring and Observability
 
@@ -265,7 +356,6 @@ The application follows Clean Architecture principles with clear separation of c
 ## Development Workflow
 
 ### Code Organization
-- Clear package structure
 - Interface definitions
 - Dependency management
 - Testing strategy
@@ -281,3 +371,5 @@ The application follows Clean Architecture principles with clear separation of c
 - Service orchestration
 - Health check validation
 - Rollback procedures
+
+This architecture provides Architecture foundation for a scalable web page analysis system while maintaining simplicity and maintainability.

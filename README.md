@@ -1,6 +1,6 @@
 # Web Page Analyzer
 
-A web application that analyzes web pages to extract useful information like HTML version, headings, links, and login forms. Built with Go backend and React frontend.
+A simple web application that analyzes web pages to extract useful information like HTML version, headings, links, and login forms. Built with Go backend and React frontend.
 
 ## What It Does
 
@@ -12,16 +12,15 @@ A web application that analyzes web pages to extract useful information like HTM
 
 ## Prerequisites
 
-- Go 1.21+
-- Node.js 16+
 - Docker and Docker Compose
-- PostgreSQL 15+
-- Redis 7+
 
 ## Quick Start
 
 1. Clone the repository
 2. Start the services:
+   ```bash
+   docker compose build
+   ``` 
    ```bash
    docker-compose up -d
    ```
@@ -67,7 +66,7 @@ A web application that analyzes web pages to extract useful information like HTM
 3. **Frontend Setup**:
    - React app with environment config
    - URL validation and error handling
-   - Responsive design for mobile/desktop
+   - Clean, modern interface
 
 ## Usage
 
@@ -82,16 +81,16 @@ A web application that analyzes web pages to extract useful information like HTM
 - **Backend**: Go, Gin, PostgreSQL, Redis
 - **Frontend**: React, CSS3, Fetch API
 - **DevOps**: Docker, Prometheus, health checks
-- **Validation**: Client-side URL validation, server-side sanitization
+- **Validation**: Client-side URL validation and normalization
 
 ## Challenges & Solutions
 
 - **Async Processing**: Replaced complex worker services with Go routines for simplicity
-- **Frontend Caching**: Implemented proper build process and cache busting
+- **Frontend Caching**: Implemented proper build process with Docker
 - **Database Schema**: Used JSONB for flexible result storage
 - **Error Handling**: Comprehensive error messages and logging
 
-## Improvements
+## Future Improvements
 
 - Add user authentication and job history
 - Implement result export (CSV, JSON)
@@ -107,7 +106,7 @@ For detailed technical architecture, design patterns, and implementation details
 
 - Run tests: `./test-coverage.sh`
 - Build: `go build ./cmd/api`
-- Frontend dev: `cd frontend && npm start`
+- Docker build: `docker compose build`
 
 ## API Documentation
 
