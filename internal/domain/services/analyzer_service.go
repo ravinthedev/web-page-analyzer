@@ -399,35 +399,28 @@ func (p *htmlParser) checkLinkAccessibility(href string) bool {
 func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
 	loginKeywords := map[string]bool{
 		"login": true, "signin": true, "sign-in": true, "sign_in": true, "log-in": true, "log_in": true,
-		"auth": true, "authenticate": true, "authentication": true,
+		"sign in": true, "log in": true, "logon": true, "log on": true,
 		"password": true, "passwd": true, "pwd": true, "pass": true,
-		"username": true, "user": true, "email": true, "e-mail": true, "userid": true, "user_id": true,
-		"sign in": true, "log in": true, "logon": true, "log on": true, "access": true,
-		"account": true, "member": true, "membership": true, "profile": true,
-		"credentials": true, "credential": true, "identity": true, "identify": true,
-		"session": true, "sessions": true, "token": true, "tokens": true,
-		"oauth": true, "sso": true, "single sign": true, "federated": true,
-		"ldap": true, "active directory": true, "ad": true, "kerberos": true,
-		"biometric": true, "fingerprint": true, "face": true, "voice": true,
-		"two factor": true, "2fa": true, "mfa": true, "multi factor": true,
-		"otp": true, "sms": true, "verification": true, "verify": true,
-		"reset": true, "forgot": true, "recover": true, "restore": true,
-		"register": true, "registration": true, "signup": true, "sign-up": true, "sign_up": true,
-		"create account": true, "new user": true, "join": true, "enroll": true,
+		"username": true, "userid": true, "user_id": true,
+		"authenticate": true, "authentication": true,
+		"credentials": true, "credential": true,
+		"forgot password": true, "reset password": true, "password reset": true,
+		"remember me": true, "stay logged in": true,
 	}
 
 	loginInputNames := map[string]bool{
-		"username": true, "user": true, "email": true, "e-mail": true, "userid": true, "user_id": true,
+		"username": true, "userid": true, "user_id": true,
 		"password": true, "passwd": true, "pwd": true, "pass": true, "passphrase": true,
-		"login": true, "signin": true, "auth": true, "authenticate": true,
-		"token": true, "otp": true, "code": true, "verification": true, "verify": true,
+		"login": true, "signin": true, "authenticate": true,
 		"remember": true, "remember_me": true, "stay_logged_in": true,
 	}
 
-	var traverse func(*html.Node) bool
-	traverse = func(n *html.Node) bool {
+	var hasPasswordField bool
+	var hasLoginContext bool
+
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
 		if n.Type == html.ElementNode {
-			// Check for password input (strongest indicator)
 			if n.Data == "input" {
 				var inputType, inputName, inputId, inputClass string
 				for _, attr := range n.Attr {
@@ -443,33 +436,23 @@ func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
 					}
 				}
 
-				// Direct password input
 				if inputType == "password" {
-					return true
+					hasPasswordField = true
 				}
-
 				for loginName := range loginInputNames {
 					if strings.Contains(inputName, loginName) || strings.Contains(inputId, loginName) || strings.Contains(inputClass, loginName) {
-						return true
-					}
-				}
-
-				if inputType == "email" {
-					for keyword := range loginKeywords {
-						if strings.Contains(inputName, keyword) || strings.Contains(inputId, keyword) || strings.Contains(inputClass, keyword) {
-							return true
-						}
+						hasLoginContext = true
 					}
 				}
 			}
 
 			if n.Data == "form" {
 				for _, attr := range n.Attr {
-					if attr.Key == "action" || attr.Key == "id" || attr.Key == "class" || attr.Key == "name" || attr.Key == "method" {
+					if attr.Key == "action" || attr.Key == "id" || attr.Key == "class" || attr.Key == "name" {
 						value := strings.ToLower(attr.Val)
 						for keyword := range loginKeywords {
 							if strings.Contains(value, keyword) {
-								return true
+								hasLoginContext = true
 							}
 						}
 					}
@@ -482,7 +465,7 @@ func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
 						value := strings.ToLower(attr.Val)
 						for keyword := range loginKeywords {
 							if strings.Contains(value, keyword) {
-								return true
+								hasLoginContext = true
 							}
 						}
 					}
@@ -496,47 +479,21 @@ func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
 					text := strings.ToLower(strings.TrimSpace(n.FirstChild.Data))
 					for keyword := range loginKeywords {
 						if strings.Contains(text, keyword) {
-							return true
+							hasLoginContext = true
 						}
 					}
 				}
 			}
 
-			if n.Data == "input" {
-				var inputType, inputName, inputId string
-				for _, attr := range n.Attr {
-					switch attr.Key {
-					case "type":
-						inputType = strings.ToLower(attr.Val)
-					case "name":
-						inputName = strings.ToLower(attr.Val)
-					case "id":
-						inputId = strings.ToLower(attr.Val)
-					}
-				}
-				if inputType == "hidden" {
-					for keyword := range loginKeywords {
-						if strings.Contains(inputName, keyword) {
-							return true
-						}
-					}
-				}
-				securityFields := map[string]bool{"csrf": true, "token": true, "authenticity": true, "nonce": true, "session": true, "state": true}
-				for field := range securityFields {
-					if strings.Contains(inputName, field) || strings.Contains(inputId, field) {
-						return true
-					}
-				}
-			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if traverse(c) {
-				return true
-			}
+			traverse(c)
 		}
-		return false
 	}
-	return traverse(doc)
+
+	traverse(doc)
+
+	return hasPasswordField && hasLoginContext
 }
 
 func (p *htmlParser) hasHTML5Features(doc *html.Node) bool {
