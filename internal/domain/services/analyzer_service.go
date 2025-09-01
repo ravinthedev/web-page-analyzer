@@ -138,10 +138,23 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		var errorMsg string
+		switch resp.StatusCode {
+		case 403:
+			errorMsg = "website blocked access (likely bot protection)"
+		case 404:
+			errorMsg = "page not found"
+		case 429:
+			errorMsg = "rate limit exceeded"
+		case 500, 502, 503, 504:
+			errorMsg = "server error"
+		default:
+			errorMsg = resp.Status
+		}
 		return &entities.AnalysisResult{
 			StatusCode: resp.StatusCode,
 			LoadTime:   time.Since(startTime),
-		}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+		}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errorMsg)
 	}
 
 	content, err := io.ReadAll(resp.Body)
