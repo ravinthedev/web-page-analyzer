@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -70,6 +71,59 @@ func (s *analyzerService) ValidateURL(targetURL string) error {
 	return nil
 }
 
+func (s *analyzerService) createDetailedError(err error, targetURL string) error {
+	if err == nil {
+		return nil
+	}
+
+	switch e := err.(type) {
+	case *url.Error:
+		if e.Timeout() {
+			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+		}
+		if e.Temporary() {
+			return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, e.Err)
+		}
+		if netErr, ok := e.Err.(net.Error); ok {
+			if netErr.Timeout() {
+				return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+			}
+			if netErr.Temporary() {
+				return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, netErr)
+			}
+		}
+		if strings.Contains(e.Error(), "no such host") {
+			return fmt.Errorf("domain not found: %s", targetURL)
+		}
+		if strings.Contains(e.Error(), "connection refused") {
+			return fmt.Errorf("connection refused by server: %s", targetURL)
+		}
+		if strings.Contains(e.Error(), "network is unreachable") {
+			return fmt.Errorf("network is unreachable: %s", targetURL)
+		}
+		return fmt.Errorf("network error while accessing %s: %v", targetURL, e.Err)
+	case net.Error:
+		if e.Timeout() {
+			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+		}
+		if e.Temporary() {
+			return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, e)
+		}
+		return fmt.Errorf("network error while accessing %s: %v", targetURL, e)
+	default:
+		if strings.Contains(err.Error(), "timeout") {
+			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+		}
+		if strings.Contains(err.Error(), "refused") {
+			return fmt.Errorf("connection refused by server: %s", targetURL)
+		}
+		if strings.Contains(err.Error(), "no such host") {
+			return fmt.Errorf("domain not found: %s", targetURL)
+		}
+		return fmt.Errorf("failed to access %s: %v", targetURL, err)
+	}
+}
+
 func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*entities.AnalysisResult, error) {
 	startTime := time.Now()
 
@@ -79,7 +133,7 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 
 	resp, err := s.httpClient.Get(targetURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch URL: %w", err)
+		return nil, s.createDetailedError(err, targetURL)
 	}
 	defer resp.Body.Close()
 
@@ -87,7 +141,7 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 		return &entities.AnalysisResult{
 			StatusCode: resp.StatusCode,
 			LoadTime:   time.Since(startTime),
-		}, fmt.Errorf("HTTP error: %s", resp.Status)
+		}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
 	content, err := io.ReadAll(resp.Body)
@@ -100,7 +154,7 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 		return nil, fmt.Errorf("failed to parse HTML: %w", err)
 	}
 
-	linkAnalysis := s.analyzeLinkAccessibility(ctx, parsed.Links, targetURL)
+	linkAnalysis := s.analyzeLinkAccessibility(ctx, parsed.Links)
 
 	return &entities.AnalysisResult{
 		HTMLVersion:   parsed.HTMLVersion,
@@ -114,7 +168,7 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 	}, nil
 }
 
-func (s *analyzerService) analyzeLinkAccessibility(ctx context.Context, links []Link, baseURL string) entities.LinkAnalysis {
+func (s *analyzerService) analyzeLinkAccessibility(ctx context.Context, links []Link) entities.LinkAnalysis {
 	analysis := entities.LinkAnalysis{
 		BrokenLinks:   make([]string, 0),
 		ExternalHosts: make([]string, 0),
@@ -127,8 +181,7 @@ func (s *analyzerService) analyzeLinkAccessibility(ctx context.Context, links []
 			analysis.Internal++
 		} else {
 			analysis.External++
-			linkU, _ := url.Parse(link.URL)
-			if linkU != nil && !hostMap[linkU.Host] {
+			if linkU, err := url.Parse(link.URL); err == nil && !hostMap[linkU.Host] {
 				analysis.ExternalHosts = append(analysis.ExternalHosts, linkU.Host)
 				hostMap[linkU.Host] = true
 			}
@@ -159,7 +212,7 @@ func (p *htmlParser) Parse(content string) (*ParsedHTML, error) {
 
 	parsed := &ParsedHTML{
 		Headings:      make(map[string]int),
-		Links:         make([]Link, 0),
+		Links:         make([]Link, 0, 50),
 		ContentLength: int64(len(content)),
 	}
 
@@ -173,18 +226,38 @@ func (p *htmlParser) Parse(content string) (*ParsedHTML, error) {
 }
 
 func (p *htmlParser) extractHTMLVersion(doc *html.Node) string {
+	doctypeMap := map[string]string{
+		"html 4.01 strict":        "HTML 4.01 Strict",
+		"html 4.01//strict":       "HTML 4.01 Strict",
+		"html 4.01 transitional":  "HTML 4.01 Transitional",
+		"html 4.01//transitional": "HTML 4.01 Transitional",
+		"html 4.01 frameset":      "HTML 4.01 Frameset",
+		"html 4.01//frameset":     "HTML 4.01 Frameset",
+		"html 4.0":                "HTML 4.0",
+		"html 3.2":                "HTML 3.2",
+		"html 2.0":                "HTML 2.0",
+		"xhtml 1.1":               "XHTML 1.1",
+		"xhtml 1.0 strict":        "XHTML 1.0 Strict",
+		"xhtml 1.0//strict":       "XHTML 1.0 Strict",
+		"xhtml 1.0 transitional":  "XHTML 1.0 Transitional",
+		"xhtml 1.0//transitional": "XHTML 1.0 Transitional",
+		"xhtml 1.0 frameset":      "XHTML 1.0 Frameset",
+		"xhtml 1.0//frameset":     "XHTML 1.0 Frameset",
+		"xhtml basic":             "XHTML Basic",
+		"xhtml mobile":            "XHTML Mobile Profile",
+		"xhtml":                   "XHTML",
+		"html":                    "HTML",
+	}
+
 	var findDoctype func(*html.Node) string
 	findDoctype = func(n *html.Node) string {
 		if n.Type == html.DoctypeNode {
 			doctype := strings.ToLower(n.Data)
-			if strings.Contains(doctype, "html") {
-				if strings.Contains(doctype, "4.01") {
-					return "HTML 4.01"
-				} else if strings.Contains(doctype, "xhtml") {
-					return "XHTML"
+			for pattern, version := range doctypeMap {
+				if strings.Contains(doctype, pattern) {
+					return version
 				}
 			}
-			return "HTML5"
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			if result := findDoctype(c); result != "" {
@@ -196,7 +269,10 @@ func (p *htmlParser) extractHTMLVersion(doc *html.Node) string {
 
 	version := findDoctype(doc)
 	if version == "" {
-		return "HTML5"
+		if p.hasHTML5Features(doc) {
+			return "HTML5"
+		}
+		return "Unknown/No DOCTYPE"
 	}
 	return version
 }
@@ -238,7 +314,7 @@ func (p *htmlParser) extractHeadings(doc *html.Node) map[string]int {
 }
 
 func (p *htmlParser) extractLinks(doc *html.Node) []Link {
-	links := make([]Link, 0)
+	links := make([]Link, 0, 100)
 	var traverse func(*html.Node)
 
 	traverse = func(n *html.Node) {
@@ -248,7 +324,7 @@ func (p *htmlParser) extractLinks(doc *html.Node) []Link {
 					link := Link{
 						URL:          attr.Val,
 						IsInternal:   p.isInternalLink(attr.Val),
-						IsAccessible: true,
+						IsAccessible: p.checkLinkAccessibility(attr.Val),
 					}
 					links = append(links, link)
 					break
@@ -276,13 +352,165 @@ func (p *htmlParser) isInternalLink(href string) bool {
 	return u.Host == ""
 }
 
+func (p *htmlParser) checkLinkAccessibility(href string) bool {
+	if strings.HasPrefix(href, "#") || strings.HasPrefix(href, "?") || strings.HasPrefix(href, "mailto:") || strings.HasPrefix(href, "tel:") {
+		return true
+	}
+
+	if strings.HasPrefix(href, "/") {
+		return true
+	}
+
+	u, err := url.Parse(href)
+	if err != nil {
+		return false
+	}
+
+	if u.Scheme == "" || u.Host == "" {
+		return true
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return true
+	}
+
+	resp, err := p.httpClient.Get(href)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode < 400
+}
+
 func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
+	loginKeywords := map[string]bool{
+		"login": true, "signin": true, "sign-in": true, "sign_in": true, "log-in": true, "log_in": true,
+		"auth": true, "authenticate": true, "authentication": true,
+		"password": true, "passwd": true, "pwd": true, "pass": true,
+		"username": true, "user": true, "email": true, "e-mail": true, "userid": true, "user_id": true,
+		"sign in": true, "log in": true, "logon": true, "log on": true, "access": true,
+		"account": true, "member": true, "membership": true, "profile": true,
+		"credentials": true, "credential": true, "identity": true, "identify": true,
+		"session": true, "sessions": true, "token": true, "tokens": true,
+		"oauth": true, "sso": true, "single sign": true, "federated": true,
+		"ldap": true, "active directory": true, "ad": true, "kerberos": true,
+		"biometric": true, "fingerprint": true, "face": true, "voice": true,
+		"two factor": true, "2fa": true, "mfa": true, "multi factor": true,
+		"otp": true, "sms": true, "verification": true, "verify": true,
+		"reset": true, "forgot": true, "recover": true, "restore": true,
+		"register": true, "registration": true, "signup": true, "sign-up": true, "sign_up": true,
+		"create account": true, "new user": true, "join": true, "enroll": true,
+	}
+
+	loginInputNames := map[string]bool{
+		"username": true, "user": true, "email": true, "e-mail": true, "userid": true, "user_id": true,
+		"password": true, "passwd": true, "pwd": true, "pass": true, "passphrase": true,
+		"login": true, "signin": true, "auth": true, "authenticate": true,
+		"token": true, "otp": true, "code": true, "verification": true, "verify": true,
+		"remember": true, "remember_me": true, "stay_logged_in": true,
+	}
+
 	var traverse func(*html.Node) bool
 	traverse = func(n *html.Node) bool {
 		if n.Type == html.ElementNode {
+			// Check for password input (strongest indicator)
 			if n.Data == "input" {
+				var inputType, inputName, inputId, inputClass string
 				for _, attr := range n.Attr {
-					if attr.Key == "type" && attr.Val == "password" {
+					switch attr.Key {
+					case "type":
+						inputType = strings.ToLower(attr.Val)
+					case "name":
+						inputName = strings.ToLower(attr.Val)
+					case "id":
+						inputId = strings.ToLower(attr.Val)
+					case "class":
+						inputClass = strings.ToLower(attr.Val)
+					}
+				}
+
+				// Direct password input
+				if inputType == "password" {
+					return true
+				}
+
+				for loginName := range loginInputNames {
+					if strings.Contains(inputName, loginName) || strings.Contains(inputId, loginName) || strings.Contains(inputClass, loginName) {
+						return true
+					}
+				}
+
+				if inputType == "email" {
+					for keyword := range loginKeywords {
+						if strings.Contains(inputName, keyword) || strings.Contains(inputId, keyword) || strings.Contains(inputClass, keyword) {
+							return true
+						}
+					}
+				}
+			}
+
+			if n.Data == "form" {
+				for _, attr := range n.Attr {
+					if attr.Key == "action" || attr.Key == "id" || attr.Key == "class" || attr.Key == "name" || attr.Key == "method" {
+						value := strings.ToLower(attr.Val)
+						for keyword := range loginKeywords {
+							if strings.Contains(value, keyword) {
+								return true
+							}
+						}
+					}
+				}
+			}
+
+			if n.Data == "button" || n.Data == "a" {
+				for _, attr := range n.Attr {
+					if attr.Key == "id" || attr.Key == "class" || attr.Key == "name" || attr.Key == "value" {
+						value := strings.ToLower(attr.Val)
+						for keyword := range loginKeywords {
+							if strings.Contains(value, keyword) {
+								return true
+							}
+						}
+					}
+				}
+			}
+
+			if n.Data == "h1" || n.Data == "h2" || n.Data == "h3" || n.Data == "h4" || n.Data == "h5" || n.Data == "h6" ||
+				n.Data == "label" || n.Data == "span" || n.Data == "div" || n.Data == "p" || n.Data == "a" ||
+				n.Data == "button" || n.Data == "title" || n.Data == "legend" {
+				if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
+					text := strings.ToLower(strings.TrimSpace(n.FirstChild.Data))
+					for keyword := range loginKeywords {
+						if strings.Contains(text, keyword) {
+							return true
+						}
+					}
+				}
+			}
+
+			if n.Data == "input" {
+				var inputType, inputName, inputId string
+				for _, attr := range n.Attr {
+					switch attr.Key {
+					case "type":
+						inputType = strings.ToLower(attr.Val)
+					case "name":
+						inputName = strings.ToLower(attr.Val)
+					case "id":
+						inputId = strings.ToLower(attr.Val)
+					}
+				}
+				if inputType == "hidden" {
+					for keyword := range loginKeywords {
+						if strings.Contains(inputName, keyword) {
+							return true
+						}
+					}
+				}
+				securityFields := map[string]bool{"csrf": true, "token": true, "authenticity": true, "nonce": true, "session": true, "state": true}
+				for field := range securityFields {
+					if strings.Contains(inputName, field) || strings.Contains(inputId, field) {
 						return true
 					}
 				}
@@ -295,5 +523,60 @@ func (p *htmlParser) hasLoginForm(doc *html.Node) bool {
 		}
 		return false
 	}
+	return traverse(doc)
+}
+
+func (p *htmlParser) hasHTML5Features(doc *html.Node) bool {
+	html5Elements := map[string]bool{
+		"article": true, "aside": true, "audio": true, "canvas": true,
+		"datalist": true, "details": true, "embed": true, "figcaption": true,
+		"figure": true, "footer": true, "header": true, "hgroup": true,
+		"keygen": true, "mark": true, "meter": true, "nav": true,
+		"output": true, "progress": true, "rp": true, "rt": true,
+		"ruby": true, "section": true, "source": true, "summary": true,
+		"time": true, "track": true, "video": true, "wbr": true,
+	}
+
+	html5InputTypes := map[string]bool{
+		"email": true, "url": true, "tel": true, "search": true,
+		"number": true, "range": true, "date": true, "time": true,
+		"datetime": true, "datetime-local": true, "month": true,
+		"week": true, "color": true,
+	}
+
+	html5Attributes := map[string]bool{
+		"contenteditable": true, "draggable": true, "hidden": true, "spellcheck": true,
+	}
+
+	var traverse func(*html.Node) bool
+	traverse = func(n *html.Node) bool {
+		if n.Type == html.ElementNode {
+			if html5Elements[n.Data] {
+				return true
+			}
+
+			if n.Data == "input" {
+				for _, attr := range n.Attr {
+					if attr.Key == "type" && html5InputTypes[attr.Val] {
+						return true
+					}
+				}
+			}
+
+			for _, attr := range n.Attr {
+				if html5Attributes[attr.Key] {
+					return true
+				}
+			}
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if traverse(c) {
+				return true
+			}
+		}
+		return false
+	}
+
 	return traverse(doc)
 }

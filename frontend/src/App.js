@@ -169,7 +169,7 @@ function App() {
             id="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="example.com, svgtopng.com, https://github.com"
+            placeholder="example.com or https://github.com"
             required
           />
         </div>
@@ -190,7 +190,7 @@ function App() {
             </label>
             <p className="toggle-description">
               {isAsync 
-                ? 'Submit multiple URLs for background processing. View results when ready.'
+                ? 'Submit URL for background processing. View results when ready.'
                 : 'Get immediate results. Perfect for single URL analysis.'
               }
             </p>
