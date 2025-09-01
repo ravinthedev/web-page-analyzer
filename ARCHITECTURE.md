@@ -71,9 +71,9 @@ The application follows Clean Architecture principles with clear separation of c
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
 │  │  │   PostgreSQL    │  │      Redis      │  │   HTTP Client   │  │   Monitoring    │ │    │
 │  │  │                 │  │                 │  │                 │  │                 │ │    │
-│  │  │ • Analysis Data │  │ • Result Cache  │  │ • Circuit Breaker│  │ • Prometheus    │ │    │
+│  │  │ • Analysis Data │  │ • Result Cache  │  │ • HTTP Client   │  │ • Prometheus    │ │    │
 │  │  │ • Job Queue     │  │ • Job Queue     │  │ • Timeout Mgmt  │  │ • Metrics       │ │    │
-│  │  │ • UUID Storage  │  │ • Priority Queue│  │ • HTTP Client   │  │ • Health Checks │ │    │
+│  │  │ • UUID Storage  │  │ • Priority Queue│  │ • Error Handling│  │ • Health Checks │ │    │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
 │  └─────────────────────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -134,11 +134,6 @@ The application follows Clean Architecture principles with clear separation of c
 - Abstract data access through interfaces
 - PostgreSQL implementation for analysis storage
 - Redis implementation for caching and queues
-
-### Circuit Breaker Pattern
-- HTTP client with failure detection
-- Automatic recovery after timeout periods
-- Prevents cascading failures
 
 ### Middleware Chain
 - Request processing pipeline
@@ -202,7 +197,7 @@ The application follows Clean Architecture principles with clear separation of c
 - Request timeout middleware
 - Configurable analysis timeouts
 - Graceful degradation on failures
-- Circuit breaker for external requests
+- HTTP client with proper timeout handling
 
 ## Security Implementation
 
@@ -258,7 +253,7 @@ The application follows Clean Architecture principles with clear separation of c
 - Partial result returns
 - Fallback error messages
 - Timeout handling
-- Circuit breaker implementation
+- HTTP client error handling
 
 ### Error Propagation
 - Structured error types

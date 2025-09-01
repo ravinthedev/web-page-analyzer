@@ -11,6 +11,7 @@ import (
 	"time"
 	"webpage-analyzer/internal/application/usecases"
 	"webpage-analyzer/internal/domain/services"
+
 	"webpage-analyzer/internal/infrastructure/persistence/postgres"
 	"webpage-analyzer/internal/infrastructure/persistence/redis"
 	"webpage-analyzer/internal/presentation/middleware"

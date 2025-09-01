@@ -8,7 +8,6 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.17.0
-	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/viper v1.17.0
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0

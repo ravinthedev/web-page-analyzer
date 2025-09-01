@@ -66,14 +66,6 @@ var (
 		[]string{"cache_type"},
 	)
 
-	CircuitBreakerState = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "circuit_breaker_state",
-			Help: "Circuit breaker state (0=closed, 1=half-open, 2=open)",
-		},
-		[]string{"name"},
-	)
-
 	DatabaseConnectionsActive = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "database_connections_active",
@@ -127,12 +119,6 @@ func RecordCacheMiss(cacheType string) {
 	CacheMissesTotal.With(prometheus.Labels{
 		"cache_type": cacheType,
 	}).Inc()
-}
-
-func UpdateCircuitBreakerState(name string, state int) {
-	CircuitBreakerState.With(prometheus.Labels{
-		"name": name,
-	}).Set(float64(state))
 }
 
 func SetDatabaseConnections(active int) {
