@@ -26,10 +26,33 @@ type analyzerService struct {
 
 type HTTPClient interface {
 	Get(url string) (*http.Response, error)
+	GetWithContext(ctx context.Context, url string) (*http.Response, error)
+}
+
+// httpClientWrapper wraps the standard http.Client to implement our HTTPClient interface
+type httpClientWrapper struct {
+	client *http.Client
+}
+
+func (w *httpClientWrapper) Get(url string) (*http.Response, error) {
+	return w.client.Get(url)
+}
+
+func (w *httpClientWrapper) GetWithContext(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return w.client.Do(req)
+}
+
+// NewHTTPClient creates a new HTTPClient wrapper
+func NewHTTPClient(client *http.Client) HTTPClient {
+	return &httpClientWrapper{client: client}
 }
 
 type HTMLParser interface {
-	Parse(content string) (*ParsedHTML, error)
+	Parse(content string, baseURL string) (*ParsedHTML, error)
 }
 
 type ParsedHTML struct {
@@ -81,15 +104,9 @@ func (s *analyzerService) createDetailedError(err error, targetURL string) error
 		if e.Timeout() {
 			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
 		}
-		if e.Temporary() {
-			return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, e.Err)
-		}
 		if netErr, ok := e.Err.(net.Error); ok {
 			if netErr.Timeout() {
 				return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
-			}
-			if netErr.Temporary() {
-				return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, netErr)
 			}
 		}
 		if strings.Contains(e.Error(), "no such host") {
@@ -106,11 +123,11 @@ func (s *analyzerService) createDetailedError(err error, targetURL string) error
 		if e.Timeout() {
 			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
 		}
-		if e.Temporary() {
-			return fmt.Errorf("temporary network error while accessing %s: %v", targetURL, e)
-		}
 		return fmt.Errorf("network error while accessing %s: %v", targetURL, e)
 	default:
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return fmt.Errorf("context deadline exceeded while accessing %s", targetURL)
+		}
 		if strings.Contains(err.Error(), "timeout") {
 			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
 		}
@@ -131,7 +148,11 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 		return nil, err
 	}
 
-	resp, err := s.httpClient.Get(targetURL)
+	// Create context with deadline for the main request
+	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := s.httpClient.GetWithContext(requestCtx, targetURL)
 	if err != nil {
 		return nil, s.createDetailedError(err, targetURL)
 	}
@@ -162,7 +183,7 @@ func (s *analyzerService) AnalyzeURL(ctx context.Context, targetURL string) (*en
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	parsed, err := s.parser.Parse(string(content))
+	parsed, err := s.parser.Parse(string(content), targetURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML: %w", err)
 	}
@@ -217,7 +238,7 @@ func NewHTMLParser(httpClient HTTPClient) HTMLParser {
 	return &htmlParser{httpClient: httpClient}
 }
 
-func (p *htmlParser) Parse(content string) (*ParsedHTML, error) {
+func (p *htmlParser) Parse(content string, baseURL string) (*ParsedHTML, error) {
 	doc, err := html.Parse(strings.NewReader(content))
 	if err != nil {
 		return nil, err
@@ -232,7 +253,7 @@ func (p *htmlParser) Parse(content string) (*ParsedHTML, error) {
 	parsed.HTMLVersion = p.extractHTMLVersion(doc)
 	parsed.Title = p.extractTitle(doc)
 	parsed.Headings = p.extractHeadings(doc)
-	parsed.Links = p.extractLinks(doc)
+	parsed.Links = p.extractLinks(doc, baseURL)
 	parsed.HasLoginForm = p.hasLoginForm(doc)
 
 	return parsed, nil
@@ -326,7 +347,7 @@ func (p *htmlParser) extractHeadings(doc *html.Node) map[string]int {
 	return headings
 }
 
-func (p *htmlParser) extractLinks(doc *html.Node) []Link {
+func (p *htmlParser) extractLinks(doc *html.Node, baseURL string) []Link {
 	links := make([]Link, 0, 100)
 	var traverse func(*html.Node)
 
@@ -336,8 +357,8 @@ func (p *htmlParser) extractLinks(doc *html.Node) []Link {
 				if attr.Key == "href" && attr.Val != "" {
 					link := Link{
 						URL:          attr.Val,
-						IsInternal:   p.isInternalLink(attr.Val),
-						IsAccessible: p.checkLinkAccessibility(attr.Val),
+						IsInternal:   p.isInternalLink(attr.Val, baseURL),
+						IsAccessible: p.checkLinkAccessibility(attr.Val, baseURL),
 					}
 					links = append(links, link)
 					break
@@ -352,48 +373,107 @@ func (p *htmlParser) extractLinks(doc *html.Node) []Link {
 	return links
 }
 
-func (p *htmlParser) isInternalLink(href string) bool {
-	if strings.HasPrefix(href, "/") || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "?") {
+func (p *htmlParser) isInternalLink(href string, baseURL string) bool {
+	// Fragment links and query parameters are always internal
+	if strings.HasPrefix(href, "#") || strings.HasPrefix(href, "?") {
 		return true
 	}
 
-	u, err := url.Parse(href)
-	if err != nil {
-		return false
-	}
-
-	return u.Host == ""
-}
-
-func (p *htmlParser) checkLinkAccessibility(href string) bool {
-	if strings.HasPrefix(href, "#") || strings.HasPrefix(href, "?") || strings.HasPrefix(href, "mailto:") || strings.HasPrefix(href, "tel:") {
-		return true
-	}
-
+	// Relative paths starting with / are internal
 	if strings.HasPrefix(href, "/") {
 		return true
 	}
 
-	u, err := url.Parse(href)
+	// Parse the href
+	hrefURL, err := url.Parse(href)
 	if err != nil {
 		return false
 	}
 
-	if u.Scheme == "" || u.Host == "" {
+	// If no scheme or host, it's a relative path (internal)
+	if hrefURL.Scheme == "" && hrefURL.Host == "" {
 		return true
 	}
 
-	if u.Scheme != "http" && u.Scheme != "https" {
+	// Parse the base URL to compare hosts
+	baseURLParsed, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+
+	// Compare hosts - if they match, it's internal
+	return hrefURL.Host == baseURLParsed.Host
+}
+
+func (p *htmlParser) checkLinkAccessibility(href string, baseURL string) bool {
+	// Fragment links, query parameters, mailto, and tel links are always considered accessible
+	if strings.HasPrefix(href, "#") || strings.HasPrefix(href, "?") ||
+		strings.HasPrefix(href, "mailto:") || strings.HasPrefix(href, "tel:") {
 		return true
 	}
 
-	resp, err := p.httpClient.Get(href)
+	// Parse the href
+	hrefURL, err := url.Parse(href)
+	if err != nil {
+		return false
+	}
+
+	// If no scheme or host, it's a relative path - resolve it against base URL
+	if hrefURL.Scheme == "" && hrefURL.Host == "" {
+		baseURLParsed, err := url.Parse(baseURL)
+		if err != nil {
+			return false
+		}
+		resolvedURL := baseURLParsed.ResolveReference(hrefURL)
+		return p.checkHTTPLink(resolvedURL.String())
+	}
+
+	// If it's a relative path starting with /
+	if strings.HasPrefix(href, "/") {
+		baseURLParsed, err := url.Parse(baseURL)
+		if err != nil {
+			return false
+		}
+		// Create a new URL with the base scheme and host, but the href path
+		resolvedURL := &url.URL{
+			Scheme: baseURLParsed.Scheme,
+			Host:   baseURLParsed.Host,
+			Path:   href,
+		}
+		return p.checkHTTPLink(resolvedURL.String())
+	}
+
+	// Only check HTTP/HTTPS links
+	if hrefURL.Scheme != "http" && hrefURL.Scheme != "https" {
+		return true // Consider non-HTTP schemes as accessible
+	}
+
+	return p.checkHTTPLink(href)
+}
+
+// checkHTTPLink performs the actual HTTP check with context deadline
+func (p *htmlParser) checkHTTPLink(url string) bool {
+	// Create context with deadline
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+
+	// Create HTTP client
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
 
-	return resp.StatusCode < 400
+	// Consider 2xx and 3xx status codes as accessible
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }
 
 func (p *htmlParser) hasLoginForm(doc *html.Node) bool {

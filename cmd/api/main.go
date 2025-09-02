@@ -61,15 +61,15 @@ func main() {
 	}
 
 	httpClient := &http.Client{
-		Timeout: cfg.Analysis.RequestTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}
-	parser := services.NewHTMLParser(httpClient)
-	analyzer := services.NewAnalyzerService(httpClient, parser)
+	wrappedClient := services.NewHTTPClient(httpClient)
+	parser := services.NewHTMLParser(wrappedClient)
+	analyzer := services.NewAnalyzerService(wrappedClient, parser)
 
 	analysisUC := usecases.NewAnalysisUseCase(
 		analysisRepo,
