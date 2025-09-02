@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"time"
 	"webpage-analyzer/internal/domain/entities"
 	"webpage-analyzer/internal/domain/repositories"
 	"webpage-analyzer/internal/domain/services"
@@ -10,6 +11,10 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+)
+
+const (
+	DefaultCorrelationID = "unknown"
 )
 
 type AnalysisUseCase interface {
@@ -24,7 +29,6 @@ type AnalysisUseCase interface {
 type analysisUseCase struct {
 	analysisRepo repositories.AnalysisRepository
 	cacheRepo    repositories.CacheRepository
-	queueRepo    repositories.JobQueueRepository
 	analyzer     services.AnalyzerService
 	logger       logger.Logger
 	cacheTTL     int
@@ -33,7 +37,6 @@ type analysisUseCase struct {
 func NewAnalysisUseCase(
 	analysisRepo repositories.AnalysisRepository,
 	cacheRepo repositories.CacheRepository,
-	queueRepo repositories.JobQueueRepository,
 	analyzer services.AnalyzerService,
 	logger logger.Logger,
 	cacheTTL int,
@@ -41,7 +44,6 @@ func NewAnalysisUseCase(
 	return &analysisUseCase{
 		analysisRepo: analysisRepo,
 		cacheRepo:    cacheRepo,
-		queueRepo:    queueRepo,
 		analyzer:     analyzer,
 		logger:       logger,
 		cacheTTL:     cacheTTL,
@@ -51,11 +53,11 @@ func NewAnalysisUseCase(
 func (uc *analysisUseCase) AnalyzeURL(ctx context.Context, url, userID string) (*entities.Analysis, error) {
 	correlationID, ok := ctx.Value(logger.CorrelationIDKey).(string)
 	if !ok {
-		correlationID = "unknown"
+		correlationID = DefaultCorrelationID
 	}
 	log := uc.logger.WithContext(ctx).With(
-		zap.String(logger.URLKey, url),
-		zap.String(logger.UserIDKey, userID),
+		zap.String(string(logger.URLKey), url),
+		zap.String(string(logger.UserIDKey), userID),
 	)
 
 	log.Info("Starting URL analysis")
@@ -91,7 +93,7 @@ func (uc *analysisUseCase) AnalyzeURL(ctx context.Context, url, userID string) (
 	if err != nil {
 		log.Error("Analysis failed", zap.Error(err))
 		analysis.MarkAsFailed(err.Error())
-		uc.analysisRepo.Update(ctx, analysis)
+		_ = uc.analysisRepo.Update(ctx, analysis)
 		return analysis, fmt.Errorf("analysis failed: %w", err)
 	}
 
@@ -105,8 +107,8 @@ func (uc *analysisUseCase) AnalyzeURL(ctx context.Context, url, userID string) (
 	}
 
 	log.Info("Analysis completed successfully",
-		zap.Duration(logger.DurationKey, result.LoadTime),
-		zap.Int(logger.StatusCodeKey, result.StatusCode),
+		zap.Duration(string(logger.DurationKey), result.LoadTime),
+		zap.Int(string(logger.StatusCodeKey), result.StatusCode),
 	)
 
 	return analysis, nil
@@ -115,11 +117,11 @@ func (uc *analysisUseCase) AnalyzeURL(ctx context.Context, url, userID string) (
 func (uc *analysisUseCase) SubmitAnalysisJob(ctx context.Context, url, userID string, priority int) (*entities.AnalysisJob, *entities.Analysis, error) {
 	correlationID, ok := ctx.Value(logger.CorrelationIDKey).(string)
 	if !ok {
-		correlationID = "unknown"
+		correlationID = DefaultCorrelationID
 	}
 	log := uc.logger.WithContext(ctx).With(
-		zap.String(logger.URLKey, url),
-		zap.String(logger.UserIDKey, userID),
+		zap.String(string(logger.URLKey), url),
+		zap.String(string(logger.UserIDKey), userID),
 		zap.Int("priority", priority),
 	)
 
@@ -149,13 +151,14 @@ func (uc *analysisUseCase) SubmitAnalysisJob(ctx context.Context, url, userID st
 
 func (uc *analysisUseCase) ProcessAnalysisAsync(ctx context.Context, analysis *entities.Analysis) {
 	go func() {
-		asyncCtx := context.Background()
+		asyncCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
 		asyncCtx = context.WithValue(asyncCtx, logger.CorrelationIDKey, analysis.CorrelationID)
 		asyncCtx = context.WithValue(asyncCtx, logger.UserIDKey, analysis.UserID)
 
 		log := uc.logger.WithContext(asyncCtx).With(
-			zap.String(logger.URLKey, analysis.URL),
-			zap.String(logger.UserIDKey, analysis.UserID),
+			zap.String(string(logger.URLKey), analysis.URL),
+			zap.String(string(logger.UserIDKey), analysis.UserID),
 			zap.String("analysis_id", analysis.ID.String()),
 		)
 
@@ -205,7 +208,7 @@ func (uc *analysisUseCase) GetAnalysis(ctx context.Context, id uuid.UUID) (*enti
 }
 
 func (uc *analysisUseCase) GetAnalysisByURL(ctx context.Context, url string) (*entities.Analysis, error) {
-	log := uc.logger.WithContext(ctx).With(zap.String(logger.URLKey, url))
+	log := uc.logger.WithContext(ctx).With(zap.String(string(logger.URLKey), url))
 	log.Debug("Retrieving analysis by URL")
 
 	analysis, err := uc.analysisRepo.GetByURL(ctx, url)

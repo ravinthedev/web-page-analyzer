@@ -128,7 +128,7 @@ func LoggingMiddleware(log logger.Logger) gin.HandlerFunc {
 			path = path + "?" + raw
 		}
 
-		correlationID := c.Request.Context().Value(logger.CorrelationIDKey)
+		correlationID := c.Request.Context().Value(string(logger.CorrelationIDKey))
 
 		fields := []zap.Field{
 			zap.String("method", method),
@@ -177,7 +177,7 @@ func ErrorHandlingMiddleware(log logger.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
-				correlationID := c.Request.Context().Value(logger.CorrelationIDKey)
+				correlationID := c.Request.Context().Value(string(logger.CorrelationIDKey))
 
 				fields := []zap.Field{
 					zap.Any("panic", err),

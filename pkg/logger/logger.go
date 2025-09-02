@@ -22,12 +22,14 @@ type logger struct {
 	zap *zap.Logger
 }
 
+type contextKey string
+
 const (
-	CorrelationIDKey = "correlation_id"
-	UserIDKey        = "user_id"
-	URLKey           = "url"
-	DurationKey      = "duration"
-	StatusCodeKey    = "status_code"
+	CorrelationIDKey contextKey = "correlation_id"
+	UserIDKey        contextKey = "user_id"
+	URLKey           contextKey = "url"
+	DurationKey      contextKey = "duration"
+	StatusCodeKey    contextKey = "status_code"
 )
 
 func New(level string, isDevelopment bool) (Logger, error) {
@@ -85,19 +87,19 @@ func (l *logger) With(fields ...zap.Field) Logger {
 
 func (l *logger) WithContext(ctx context.Context) Logger {
 	fields := make([]zap.Field, 0)
-	
+
 	if correlationID := ctx.Value(CorrelationIDKey); correlationID != nil {
 		if id, ok := correlationID.(string); ok {
-			fields = append(fields, zap.String(CorrelationIDKey, id))
+			fields = append(fields, zap.String(string(CorrelationIDKey), id))
 		}
 	}
-	
+
 	if userID := ctx.Value(UserIDKey); userID != nil {
 		if id, ok := userID.(string); ok {
-			fields = append(fields, zap.String(UserIDKey, id))
+			fields = append(fields, zap.String(string(UserIDKey), id))
 		}
 	}
-	
+
 	return l.With(fields...)
 }
 

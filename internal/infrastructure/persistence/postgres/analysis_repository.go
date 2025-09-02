@@ -131,17 +131,6 @@ func (r *analysisRepository) Update(ctx context.Context, analysis *entities.Anal
 	return nil
 }
 
-func (r *analysisRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM analyses WHERE id = $1`
-
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete analysis: %w", err)
-	}
-
-	return nil
-}
-
 func (r *analysisRepository) List(ctx context.Context, filters repositories.AnalysisFilters) ([]*entities.Analysis, error) {
 	query := `
 		SELECT id, url, status, result, error, created_at, updated_at, 
@@ -195,33 +184,6 @@ func (r *analysisRepository) List(ctx context.Context, filters repositories.Anal
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list analyses: %w", err)
-	}
-	defer rows.Close()
-
-	analyses := make([]*entities.Analysis, 0)
-	for rows.Next() {
-		analysis, err := r.scanAnalysisFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		analyses = append(analyses, analysis)
-	}
-
-	return analyses, nil
-}
-
-func (r *analysisRepository) GetPendingJobs(ctx context.Context, limit int) ([]*entities.Analysis, error) {
-	query := `
-		SELECT id, url, status, result, error, created_at, updated_at, 
-			completed_at, retry_count, priority, user_id, correlation_id
-		FROM analyses 
-		WHERE status = $1 
-		ORDER BY priority DESC, created_at ASC 
-		LIMIT $2`
-
-	rows, err := r.db.QueryContext(ctx, query, entities.StatusPending, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
 	}
 	defer rows.Close()
 

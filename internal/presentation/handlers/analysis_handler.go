@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	DefaultUserID        = "anonymous"
+	DefaultCorrelationID = "unknown"
+)
+
 type AnalysisHandler struct {
 	analysisUC usecases.AnalysisUseCase
 	logger     logger.Logger
@@ -51,17 +56,17 @@ func (h *AnalysisHandler) AnalyzeURL(c *gin.Context) {
 		return
 	}
 
-	userID, ok := c.Request.Context().Value(logger.UserIDKey).(string)
+	userID, ok := c.Request.Context().Value(string(logger.UserIDKey)).(string)
 	if !ok {
-		userID = "anonymous"
+		userID = DefaultUserID
 	}
-	correlationID, ok := c.Request.Context().Value(logger.CorrelationIDKey).(string)
+	correlationID, ok := c.Request.Context().Value(string(logger.CorrelationIDKey)).(string)
 	if !ok {
-		correlationID = "unknown"
+		correlationID = DefaultCorrelationID
 	}
 
 	log := h.logger.WithContext(c.Request.Context()).With(
-		zap.String(logger.URLKey, req.URL),
+		zap.String(string(logger.URLKey), req.URL),
 		zap.Bool("async", req.Async),
 		zap.Int("priority", req.Priority),
 	)

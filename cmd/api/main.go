@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,9 +19,10 @@ import (
 	"webpage-analyzer/internal/presentation/routes"
 	"webpage-analyzer/pkg/config"
 	"webpage-analyzer/pkg/logger"
+	"webpage-analyzer/pkg/migrate"
 
 	"github.com/gin-gonic/gin"
-	redisclient "github.com/go-redis/redis/v8"
+	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -42,18 +44,17 @@ func main() {
 
 	cacheRepo := redis.NewCacheRepository(&cfg.Redis)
 
-	redisClient := redisclient.NewClient(&redisclient.Options{
-		Addr:         fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
-		Password:     cfg.Redis.Password,
-		DB:           cfg.Redis.DB,
-		PoolSize:     cfg.Redis.PoolSize,
-		MinIdleConns: cfg.Redis.MinIdleConns,
-		DialTimeout:  cfg.Redis.DialTimeout,
-		ReadTimeout:  cfg.Redis.ReadTimeout,
-		WriteTimeout: cfg.Redis.WriteTimeout,
-	})
+	db, err := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.User, cfg.Database.Password, cfg.Database.Name, cfg.Database.SSLMode))
+	if err != nil {
+		appLogger.Fatal("Failed to connect to database", zap.Error(err))
+	}
 
-	queueRepo := redis.NewJobQueueRepository(redisClient)
+	migrator := migrate.NewMigrator(db)
+	migrationsFS := os.DirFS("migrations")
+	if err := migrator.Up(migrationsFS); err != nil {
+		appLogger.Fatal("Failed to run migrations", zap.Error(err))
+	}
 
 	analysisRepo, err := postgres.NewAnalysisRepository(&cfg.Database)
 	if err != nil {
@@ -69,12 +70,11 @@ func main() {
 	}
 	wrappedClient := services.NewHTTPClient(httpClient)
 	parser := services.NewHTMLParser(wrappedClient)
-	analyzer := services.NewAnalyzerService(wrappedClient, parser)
+	analyzer := services.NewAnalyzerService(wrappedClient, parser, services.DefaultMaxConcurrentChecks)
 
 	analysisUC := usecases.NewAnalysisUseCase(
 		analysisRepo,
 		cacheRepo,
-		queueRepo,
 		analyzer,
 		appLogger,
 		int(cfg.Analysis.CacheTTL.Seconds()),

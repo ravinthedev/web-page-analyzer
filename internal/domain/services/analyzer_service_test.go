@@ -12,7 +12,7 @@ func TestLinkAccessibility(t *testing.T) {
 		switch r.URL.Path {
 		case "/":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`
+			_, _ = w.Write([]byte(`
 				<!DOCTYPE html>
 				<html>
 				<head><title>Test Page</title></head>
@@ -28,18 +28,19 @@ func TestLinkAccessibility(t *testing.T) {
 			`))
 		case "/internal-page":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("<html><body>Internal Page</body></html>"))
+			_, _ = w.Write([]byte("<html><body>Internal Page</body></html>"))
 		case "/relative-page":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("<html><body>Relative Page</body></html>"))
+			_, _ = w.Write([]byte("<html><body>Relative Page</body></html>"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
-	parser := NewHTMLParser(http.DefaultClient)
-	service := NewAnalyzerService(http.DefaultClient, parser)
+	wrappedClient := NewHTTPClient(http.DefaultClient)
+	parser := NewHTMLParser(wrappedClient)
+	service := NewAnalyzerService(wrappedClient, parser, 10)
 
 	ctx := context.Background()
 	result, err := service.AnalyzeURL(ctx, server.URL)
@@ -113,7 +114,9 @@ func TestCheckLinkAccessibility(t *testing.T) {
 	}))
 	defer server.Close()
 
-	parser := &htmlParser{}
+	// create parser with proper HTTP client
+	wrappedClient := NewHTTPClient(http.DefaultClient)
+	parser := NewHTMLParser(wrappedClient)
 
 	tests := []struct {
 		href     string
@@ -131,7 +134,7 @@ func TestCheckLinkAccessibility(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := parser.checkLinkAccessibility(test.href, test.baseURL)
+		result := parser.(*htmlParser).checkLinkAccessibility(test.href, test.baseURL)
 		if result != test.expected {
 			t.Errorf("checkLinkAccessibility(%q, %q) = %v, expected %v", test.href, test.baseURL, result, test.expected)
 		}
