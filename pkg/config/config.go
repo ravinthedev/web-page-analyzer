@@ -51,12 +51,17 @@ type LoggerConfig struct {
 }
 
 type AnalysisConfig struct {
-	RequestTimeout    time.Duration `mapstructure:"request_timeout"`
-	MaxContentLength  int64         `mapstructure:"max_content_length"`
-	CacheTTL          time.Duration `mapstructure:"cache_ttl"`
-	RateLimitPerIP    int           `mapstructure:"rate_limit_per_ip"`
-	RateLimitWindow   time.Duration `mapstructure:"rate_limit_window"`
-	MaxConcurrentJobs int           `mapstructure:"max_concurrent_jobs"`
+	RequestTimeout          time.Duration `mapstructure:"request_timeout"`
+	MaxContentLength        int64         `mapstructure:"max_content_length"`
+	CacheTTL                time.Duration `mapstructure:"cache_ttl"`
+	RateLimitPerIP          int           `mapstructure:"rate_limit_per_ip"`
+	RateLimitWindow         time.Duration `mapstructure:"rate_limit_window"`
+	MaxConcurrentJobs       int           `mapstructure:"max_concurrent_jobs"`
+	LinkCheckTimeout        time.Duration `mapstructure:"link_check_timeout"`
+	MaxLinksToCheck         int           `mapstructure:"max_links_to_check"`
+	MaxConcurrentLinkChecks int           `mapstructure:"max_concurrent_link_checks"`
+	MaxHTMLDepth            int           `mapstructure:"max_html_depth"`
+	MaxURLLength            int           `mapstructure:"max_url_length"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -112,6 +117,11 @@ func setDefaults() {
 	viper.SetDefault("analysis.rate_limit_per_ip", 100)
 	viper.SetDefault("analysis.rate_limit_window", "1m")
 	viper.SetDefault("analysis.max_concurrent_jobs", 50)
+	viper.SetDefault("analysis.link_check_timeout", "5s")
+	viper.SetDefault("analysis.max_links_to_check", 50)
+	viper.SetDefault("analysis.max_concurrent_link_checks", 10)
+	viper.SetDefault("analysis.max_html_depth", 100)
+	viper.SetDefault("analysis.max_url_length", 2048)
 
 	_ = viper.BindEnv("server.port", "PORT")
 	_ = viper.BindEnv("database.host", "DB_HOST")

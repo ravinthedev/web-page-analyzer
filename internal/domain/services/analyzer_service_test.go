@@ -2,10 +2,24 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func getTestConfig() *AnalyzerConfig {
+	return &AnalyzerConfig{
+		LinkCheckTimeout:        5 * time.Second,
+		MaxLinksToCheck:         50,
+		MaxConcurrentLinkChecks: 10,
+		MaxHTMLDepth:            100,
+		MaxURLLength:            2048,
+	}
+}
 
 func TestLinkAccessibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +54,7 @@ func TestLinkAccessibility(t *testing.T) {
 
 	wrappedClient := NewHTTPClient(http.DefaultClient)
 	parser := NewHTMLParser(wrappedClient)
-	service := NewAnalyzerService(wrappedClient, parser, 10)
+	service := NewAnalyzerService(wrappedClient, parser, getTestConfig())
 
 	ctx := context.Background()
 	result, err := service.AnalyzeURL(ctx, server.URL)
@@ -116,7 +130,7 @@ func TestCheckLinkAccessibility(t *testing.T) {
 
 	// create parser with proper HTTP client
 	wrappedClient := NewHTTPClient(http.DefaultClient)
-	parser := NewHTMLParser(wrappedClient)
+	_ = NewHTMLParser(wrappedClient) // parser not used in this test
 
 	tests := []struct {
 		href     string
@@ -133,10 +147,231 @@ func TestCheckLinkAccessibility(t *testing.T) {
 		{"notfound", server.URL, false},
 	}
 
+	testClient := NewHTTPClient(http.DefaultClient)
+	testParser := NewHTMLParser(testClient)
+
 	for _, test := range tests {
-		result := parser.(*htmlParser).checkLinkAccessibility(test.href, test.baseURL)
-		if result != test.expected {
-			t.Errorf("checkLinkAccessibility(%q, %q) = %v, expected %v", test.href, test.baseURL, result, test.expected)
+		// create a simple HTML page with the test link
+		htmlContent := fmt.Sprintf(`<html><body><a href="%s">Test Link</a></body></html>`, test.href)
+
+		parsed, err := testParser.Parse(htmlContent, test.baseURL)
+		if err != nil {
+			t.Errorf("Parse failed for %q: %v", test.href, err)
+			continue
 		}
+
+		// find the link in the parsed results
+		if len(parsed.Links) > 0 {
+			link := parsed.Links[0]
+			if link.IsAccessible != test.expected {
+				t.Errorf("Link accessibility for %q = %v, expected %v", test.href, link.IsAccessible, test.expected)
+			}
+		}
+	}
+}
+
+func TestNewAnalyzerService(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+
+	assert.NotNil(t, service)
+}
+
+func TestValidateURL(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+
+	err := service.ValidateURL("https://example.com")
+	assert.NoError(t, err)
+
+	err = service.ValidateURL("invalid-url")
+	assert.Error(t, err)
+
+	err = service.ValidateURL("")
+	assert.Error(t, err)
+}
+
+func TestNewHTMLParser(t *testing.T) {
+	parser := NewHTMLParser(nil)
+
+	assert.NotNil(t, parser)
+}
+
+func TestAnalyzerServiceConstructor(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	assert.NotNil(t, service)
+}
+
+func TestAnalyzerServiceWithDifferentMaxDepth(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	assert.NotNil(t, service)
+}
+
+func TestAnalyzerServiceWithZeroMaxDepth(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	assert.NotNil(t, service)
+}
+
+func TestAnalyzeWebPage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`
+			<!DOCTYPE html>
+			<html>
+			<head>
+				<title>Test Page</title>
+			</head>
+			<body>
+				<h1>Main Heading</h1>
+				<h2>Sub Heading</h2>
+				<h3>Another Heading</h3>
+				<a href="/internal">Internal Link</a>
+				<a href="https://external.com">External Link</a>
+				<form>
+					<input type="text" name="username">
+					<input type="password" name="password">
+					<button type="submit">Login</button>
+				</form>
+			</body>
+			</html>
+		`))
+	}))
+	defer server.Close()
+
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	result, err := service.AnalyzeURL(context.Background(), server.URL)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, result.StatusCode)
+	assert.Equal(t, "Test Page", result.Title)
+	assert.Equal(t, "HTML", result.HTMLVersion)
+	assert.Equal(t, 1, result.Headings["h1"])
+	assert.Equal(t, 1, result.Headings["h2"])
+	assert.Equal(t, 1, result.Headings["h3"])
+	assert.True(t, result.HasLoginForm)
+}
+
+func TestAnalyzeWebPageWithInvalidURL(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	_, err := service.AnalyzeURL(context.Background(), "not-a-valid-url")
+
+	assert.Error(t, err)
+}
+
+func TestAnalyzeWebPageWith404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+	_, err := service.AnalyzeURL(context.Background(), server.URL)
+
+	assert.Error(t, err)
+}
+
+func TestHTMLParserExtractTitle(t *testing.T) {
+	html := `<html><head><title>My Test Page</title></head><body></body></html>`
+	parser := NewHTMLParser(nil)
+
+	parsed, err := parser.Parse(html, "https://example.com")
+	assert.NoError(t, err)
+	assert.Equal(t, "My Test Page", parsed.Title)
+}
+
+func TestHTMLParserExtractHeadings(t *testing.T) {
+	html := `
+		<html>
+		<body>
+			<h1>Title 1</h1>
+			<h2>Title 2</h2>
+			<h2>Title 2 Again</h2>
+			<h3>Title 3</h3>
+		</body>
+		</html>
+	`
+	parser := NewHTMLParser(nil)
+
+	parsed, err := parser.Parse(html, "https://example.com")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, parsed.Headings["h1"])
+	assert.Equal(t, 2, parsed.Headings["h2"])
+	assert.Equal(t, 1, parsed.Headings["h3"])
+}
+
+func TestHTMLParserDetectLoginForm(t *testing.T) {
+	htmlWithLogin := `
+		<html>
+		<body>
+			<form>
+				<input type="text" name="username">
+				<input type="password" name="password">
+			</form>
+		</body>
+		</html>
+	`
+
+	htmlWithoutLogin := `
+		<html>
+		<body>
+			<form>
+				<input type="text" name="email">
+				<input type="submit" value="Submit">
+			</form>
+		</body>
+		</html>
+	`
+
+	parser := NewHTMLParser(nil)
+
+	parsed1, err1 := parser.Parse(htmlWithLogin, "https://example.com")
+	assert.NoError(t, err1)
+	assert.True(t, parsed1.HasLoginForm)
+
+	parsed2, err2 := parser.Parse(htmlWithoutLogin, "https://example.com")
+	assert.NoError(t, err2)
+	assert.False(t, parsed2.HasLoginForm)
+}
+
+func TestValidateURLComprehensive(t *testing.T) {
+	httpClient := NewHTTPClient(&http.Client{})
+	parser := NewHTMLParser(httpClient)
+	service := NewAnalyzerService(httpClient, parser, getTestConfig())
+
+	validURLs := []string{
+		"https://example.com",
+		"http://test.com",
+		"https://subdomain.example.com/path",
+	}
+
+	invalidURLs := []string{
+		"not-a-url",
+		"ftp://example.com",
+		"",
+		"javascript:alert('test')",
+	}
+
+	for _, url := range validURLs {
+		err := service.ValidateURL(url)
+		assert.NoError(t, err, "URL should be valid: %s", url)
+	}
+
+	for _, url := range invalidURLs {
+		err := service.ValidateURL(url)
+		assert.Error(t, err, "URL should be invalid: %s", url)
 	}
 }

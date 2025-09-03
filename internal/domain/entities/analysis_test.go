@@ -2,6 +2,7 @@ package entities
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -104,4 +105,54 @@ func TestAnalysisStatus(t *testing.T) {
 	assert.Equal(t, "processing", string(StatusProcessing))
 	assert.Equal(t, "completed", string(StatusCompleted))
 	assert.Equal(t, "failed", string(StatusFailed))
+}
+
+func TestAnalysisFields(t *testing.T) {
+	analysis := &Analysis{
+		URL:           "https://example.com",
+		Status:        StatusCompleted,
+		UserID:        "user1",
+		CorrelationID: "corr1",
+		Priority:      1,
+		RetryCount:    0,
+	}
+
+	assert.Equal(t, "https://example.com", analysis.URL)
+	assert.Equal(t, StatusCompleted, analysis.Status)
+	assert.Equal(t, "user1", analysis.UserID)
+	assert.Equal(t, "corr1", analysis.CorrelationID)
+	assert.Equal(t, 1, analysis.Priority)
+	assert.Equal(t, 0, analysis.RetryCount)
+}
+
+func TestAnalysisResultFields(t *testing.T) {
+	result := &AnalysisResult{
+		StatusCode:   200,
+		LoadTime:     time.Second,
+		Title:        "Test Page",
+		HTMLVersion:  "HTML5",
+		Headings:     map[string]int{"h1": 1, "h2": 2},
+		HasLoginForm: false,
+	}
+
+	assert.Equal(t, 200, result.StatusCode)
+	assert.Equal(t, time.Second, result.LoadTime)
+	assert.Equal(t, "Test Page", result.Title)
+	assert.Equal(t, "HTML5", result.HTMLVersion)
+	assert.Len(t, result.Headings, 2)
+	assert.False(t, result.HasLoginForm)
+}
+
+func TestAnalysisJobFields(t *testing.T) {
+	job := &AnalysisJob{
+		URL:           "https://example.com",
+		UserID:        "user1",
+		CorrelationID: "corr1",
+		Priority:      1,
+	}
+
+	assert.Equal(t, "https://example.com", job.URL)
+	assert.Equal(t, "user1", job.UserID)
+	assert.Equal(t, "corr1", job.CorrelationID)
+	assert.Equal(t, 1, job.Priority)
 }

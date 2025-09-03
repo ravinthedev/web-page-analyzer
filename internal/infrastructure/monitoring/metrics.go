@@ -74,29 +74,3 @@ func RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Du
 	HTTPRequestDuration.With(status).Observe(duration.Seconds())
 	HTTPRequestsTotal.With(status).Inc()
 }
-
-func UpdateQueueLength(queueName string, length int64) {
-	QueueLength.With(prometheus.Labels{
-		"queue_name": queueName,
-	}).Set(float64(length))
-}
-
-func RecordCacheHit(cacheType string) {
-	CacheHitsTotal.With(prometheus.Labels{
-		"cache_type": cacheType,
-	}).Inc()
-}
-
-func RecordCacheMiss(cacheType string) {
-	CacheMissesTotal.With(prometheus.Labels{
-		"cache_type": cacheType,
-	}).Inc()
-}
-
-func SetDatabaseConnections(active int) {
-	DatabaseConnectionsActive.Set(float64(active))
-}
-
-func SetRedisConnections(active int) {
-	RedisConnectionsActive.Set(float64(active))
-}

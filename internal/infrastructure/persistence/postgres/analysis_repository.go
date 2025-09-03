@@ -158,7 +158,14 @@ func (r *analysisRepository) List(ctx context.Context, filters repositories.Anal
 		args = append(args, "%"+filters.URL+"%")
 	}
 
-	if filters.SortBy != "" {
+	validSortFields := map[string]bool{
+		"created_at": true,
+		"updated_at": true,
+		"status":     true,
+		"priority":   true,
+	}
+
+	if filters.SortBy != "" && validSortFields[filters.SortBy] {
 		query += fmt.Sprintf(" ORDER BY %s", filters.SortBy)
 		if filters.SortOrder == "desc" {
 			query += " DESC"

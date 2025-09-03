@@ -2,7 +2,6 @@ package logger
 
 import (
 	"context"
-	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -101,17 +100,4 @@ func (l *logger) WithContext(ctx context.Context) Logger {
 	}
 
 	return l.With(fields...)
-}
-
-func GetLogLevel() string {
-	level := os.Getenv("LOG_LEVEL")
-	if level == "" {
-		return "info"
-	}
-	return level
-}
-
-func IsDevelopment() bool {
-	env := os.Getenv("ENV")
-	return env == "development" || env == "dev" || env == ""
 }

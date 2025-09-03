@@ -73,8 +73,17 @@ func (uc *analysisUseCase) AnalyzeURL(ctx context.Context, url, userID string) (
 
 	if existing, err := uc.analysisRepo.GetByURL(ctx, url); err == nil {
 		if existing.Status == entities.StatusCompleted && existing.Result != nil {
-			log.Info("Analysis already completed", zap.String("analysis_id", existing.ID.String()))
-			return existing, nil
+			// check if the analysis is still fresh (within cache TTL)
+			if time.Since(existing.CreatedAt) < time.Duration(uc.cacheTTL)*time.Second {
+				log.Info("Analysis already completed and still fresh",
+					zap.String("analysis_id", existing.ID.String()),
+					zap.Duration("age", time.Since(existing.CreatedAt)))
+				return existing, nil
+			} else {
+				log.Info("Analysis exists but expired, will re-analyze",
+					zap.String("analysis_id", existing.ID.String()),
+					zap.Duration("age", time.Since(existing.CreatedAt)))
+			}
 		}
 	}
 

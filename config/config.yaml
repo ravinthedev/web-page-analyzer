@@ -39,3 +39,8 @@ analysis:
   rate_limit_per_ip: 100
   rate_limit_window: 1m
   max_concurrent_jobs: 50
+  link_check_timeout: 5s
+  max_links_to_check: 50
+  max_concurrent_link_checks: 10
+  max_html_depth: 100
+  max_url_length: 2048

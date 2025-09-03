@@ -41,9 +41,11 @@ function App() {
 
 
       if (!response.ok) {
-        setError(`HTTP ${response.status}: ${data.error || 'Unknown error'}`);
+        const errorMessage = data.details || data.error || 'Unknown error';
+        setError(errorMessage);
       } else if (data.error) {
-        setError(`${data.error}${data.statusCode ? ` (Status: ${data.statusCode})` : ''}`);
+        const errorMessage = data.details || data.error;
+        setError(errorMessage);
       } else {
         if (isAsync) {
           const newJob = {

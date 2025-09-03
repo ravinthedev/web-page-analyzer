@@ -62,15 +62,25 @@ func main() {
 	}
 
 	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
+			DisableKeepAlives:   false,
 		},
 	}
 	wrappedClient := services.NewHTTPClient(httpClient)
 	parser := services.NewHTMLParser(wrappedClient)
-	analyzer := services.NewAnalyzerService(wrappedClient, parser, services.DefaultMaxConcurrentChecks)
+
+	analyzerConfig := &services.AnalyzerConfig{
+		LinkCheckTimeout:        cfg.Analysis.LinkCheckTimeout,
+		MaxLinksToCheck:         cfg.Analysis.MaxLinksToCheck,
+		MaxConcurrentLinkChecks: cfg.Analysis.MaxConcurrentLinkChecks,
+		MaxHTMLDepth:            cfg.Analysis.MaxHTMLDepth,
+		MaxURLLength:            cfg.Analysis.MaxURLLength,
+	}
+	analyzer := services.NewAnalyzerService(wrappedClient, parser, analyzerConfig)
 
 	analysisUC := usecases.NewAnalysisUseCase(
 		analysisRepo,

@@ -1,115 +1,163 @@
-# Web Page Analyzer - Technical Architecture
+# Web Page Analyzer - Architecture
 
-This document describes the technical implementation details, design patterns, and architectural decisions for the Web Page Analyzer application.
+This document covers the technical design and implementation details of the web page analyzer.
 
-## System Overview
+## Overview
 
-The application follows Clean Architecture principles with clear separation of concerns. We use Go for the backend API and React for the frontend interface. The system processes web page analysis requests either synchronously or asynchronously using Go routines.
+The system is built with Go backend and React frontend, following clean architecture patterns. It analyzes web pages both synchronously and asynchronously, storing results in PostgreSQL with Redis caching.
 
-## Core Architecture
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND ARCHITECTURE                                        │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
-│  │   User Input    │    │   URL Validation│    │   API Request   │    │   Results Display│  │
-│  │                 │    │                 │    │                 │    │                 │  │
-│  │ • URL Form      │    │ • Format Check  │    │ • POST /analyze │    │ • Analysis Data │  │
-│  │ • Async Option  │    │ • Normalization │    │ • Sync/Async    │    │ • Job Status    │  │
-│  │ • Priority      │    │ • Error Display │    │ • Polling       │    │ • Links/Images  │  │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                FRONTEND                                         │
+│                              (React App)                                        │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐          │
+│  │ URL Input   │   │ Validation  │   │ API Client  │   │ Results UI  │          │
+│  │ Form        │   │ & Error     │   │ (Fetch)     │   │ Display     │          │
+│  └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘          │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
                                         │
                                         │ HTTP Requests
+                                        │ (JSON API)
                                         ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    BACKEND (Go)                                           │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
-│  │                        PRESENTATION LAYER                                           │    │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
-│  │  │   Gin Router    │  │   Handlers      │  │   Middleware    │  │     Routes      │ │    │
-│  │  │                 │  │                 │  │                 │  │                 │ │    │
-│  │  │ • HTTP Server   │  │ • API Endpoints │  │ • Rate Limiting │  │ • Route Config  │ │    │
-│  │  │ • Request Flow  │  │ • Request Proc  │  │ • CORS          │  │ • Middleware    │ │    │
-│  │  │ • Response      │  │ • Response Gen  │  │ • Logging       │  │ • Error Handling│ │    │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
-│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
-│                                        │                                                    │
-│                                        │ Business Logic                                     │
-│                                        ▼                                                    │
-│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
-│  │                        APPLICATION LAYER                                             │    │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
-│  │  │   Use Cases     │  │   Validation    │  │   Business Logic│  │   Orchestration │ │    │
-│  │  │                 │  │                 │  │                 │  │                 │ │    │
-│  │  │ • AnalyzeURL    │  │ • Input Valid   │  │ • URL Processing│  │ • Workflow Mgmt │ │    │
-│  │  │ • ProcessAsync  │  │ • Business Rules│  │ • HTML Parsing  │  │ • Error Handling│ │    │
-│  │  │ • GetAnalysis   │  │ • Constraints   │  │ • Data Analysis │  │ • Async Processing│ │    │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
-│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
-│                                        │                                                    │
-│                                        │ Domain Logic                                       │
-│                                        ▼                                                    │
-│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
-│  │                          DOMAIN LAYER                                                │    │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
-│  │  │   Entities      │  │   Services      │  │   Repositories  │  │   Interfaces    │ │    │
-│  │  │                 │  │                 │  │                 │  │                 │ │    │
-│  │  │ • Analysis      │  │ • Analyzer      │  │ • Analysis Repo │  │ • Repository    │ │    │
-│  │  │ • AnalysisResult│  │ • HTML Parser   │  │ • Cache Repo    │  │ • Service       │ │    │
-│  │  │ • LinkAnalysis  │  │ • HTTP Client   │  │ • Queue Repo    │  │ • Use Case      │ │    │
-│  │  │ • AnalysisJob   │  │ • URL Validator │  │ • Job Queue    │  │ • Handler       │ │    │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
-│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
-│                                        │                                                    │
-│                                        │ Data Access                                        │
-│                                        ▼                                                    │
-│  ┌─────────────────────────────────────────────────────────────────────────────────────┐    │
-│  │                      INFRASTRUCTURE LAYER                                            │    │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │    │
-│  │  │   PostgreSQL    │  │      Redis      │  │   HTTP Client   │  │   Monitoring    │ │    │
-│  │  │                 │  │                 │  │                 │  │                 │ │    │
-│  │  │ • Analysis Data │  │ • Result Cache  │  │ • HTTP Client   │  │ • Prometheus    │ │    │
-│  │  │ • Job Queue     │  │ • Job Queue     │  │ • Timeout Mgmt  │  │ • Metrics       │ │    │
-│  │  │ • UUID Storage  │  │ • Priority Queue│  │ • Error Handling│  │ • Health Checks │ │    │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘ │    │
-│  └─────────────────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                               BACKEND API                                      │
+│                                (Go + Gin)                                      │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────────────┤
+│  │                        HTTP LAYER                                           │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                        │
+│  │  │ Gin Router  │   │ Middleware  │   │ Handlers    │                        │
+│  │  │ & Routes    │   │ (CORS, Rate │   │ (API Logic) │                        │
+│  │  │             │   │ Limiting)   │   │             │                        │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘                        │
+│  └─────────────────────────────────────────────────────────────────────────────┤
+│                                        │                                       │
+│                                        ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┤
+│  │                    APPLICATION LAYER                                        │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                        │
+│  │  │ Use Cases   │   │ Business    │   │ Async Job   │                        │
+│  │  │ (Analyze,   │   │ Logic &     │   │ Processing  │                        │
+│  │  │ GetResult)  │   │ Validation  │   │ (Goroutines)│                        │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘                        │
+│  └─────────────────────────────────────────────────────────────────────────────┤
+│                                        │                                       │
+│                                        ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┤
+│  │                      DOMAIN LAYER                                           │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                        │
+│  │  │ Analyzer    │   │ HTML Parser │   │ Entities    │                        │
+│  │  │ Service     │   │ (Link Check,│   │ (Analysis,  │                        │
+│  │  │             │   │ Content)    │   │ Results)    │                        │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘                        │
+│  └─────────────────────────────────────────────────────────────────────────────┤
+│                                        │                                       │
+│                                        ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┤
+│  │                  INFRASTRUCTURE LAYER                                       │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                        │
+│  │  │ PostgreSQL  │   │ Redis Cache │   │ HTTP Client │                        │
+│  │  │ (Analysis   │   │ (Results,   │   │ (External   │                        │
+│  │  │ Storage)    │   │ 1hr TTL)    │   │ Web Pages)  │                        │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘                        │
+│  └─────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              MONITORING                                         │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐          │
+│  │ Prometheus  │   │ Health      │   │ Structured  │   │ Request     │          │
+│  │ Metrics     │   │ Checks      │   │ Logging     │   │ Tracing     │          │
+│  └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘          │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Architecture Flow:
-1. **Frontend** → Sends HTTP requests to Backend API
-2. **Presentation Layer** → Handles HTTP requests, applies middleware
-3. **Application Layer** → Orchestrates business logic and workflows
-4. **Domain Layer** → Contains core business entities and rules
-5. **Infrastructure Layer** → Manages data persistence and external services
+## Architecture Layers
 
-### Key Components:
+The application follows clean architecture with four main layers:
 
-#### **Frontend Flow:**
-- **User Input**: URL form with async option and priority setting
-- **URL Validation**: Client-side format checking and normalization
-- **API Request**: POST to /api/v1/analyze with sync/async modes
-- **Results Display**: Analysis data, job status, and metadata
+### Frontend (React)
+- **URL Input Form**: Client-side validation with protocol normalization
+- **Processing Modes**: Toggle between synchronous and asynchronous processing
+- **Job Management**: Real-time job status tracking with polling
+- **Results Display**: 
+  - HTML version detection
+  - Page title extraction
+  - Headings distribution (H1-H6 counts)
+  - Link analysis (internal/external/inaccessible counts)
+  - Login form detection
+  - Performance metrics (load time, content size, status code)
+  - External hosts listing
+- **Error Handling**: Comprehensive error display with correlation IDs
+- **API Communication**: Fetch-based HTTP client with configurable endpoints
 
-#### **Backend Layers:**
-- **Domain Layer**: Core business entities and interfaces
-- **Application Layer**: Business logic, validation, and use case orchestration
-- **Infrastructure Layer**: Data persistence and external service integration
-- **Presentation Layer**: HTTP handling and API endpoints
+### Backend Layers
 
-#### **Data Flow:**
-- **Synchronous**: Direct analysis with immediate response
-- **Asynchronous**: Background processing with job tracking and polling
-- **Caching**: Redis-based result caching for performance
-- **Queue Management**: Redis-based priority job queue for async processing
+**Presentation Layer**
+- Gin HTTP router with versioned API endpoints (`/api/v1/`)
+- Comprehensive middleware stack:
+  - CORS with configurable origins
+  - Rate limiting (100 req/min per IP)
+  - Request correlation ID tracking
+  - Structured logging with Zap
+  - Error handling and panic recovery
+  - Request size limits
+  - Authentication middleware (X-User-ID header)
+- Health check endpoints (`/health`, `/health/live`, `/health/ready`)
+- Prometheus metrics endpoint (`/metrics`)
+
+**Application Layer**
+- Use cases: `AnalyzeURL`, `SubmitAnalysisJob`, `ProcessAnalysisAsync`, `GetAnalysis`, `ListAnalyses`
+- Business logic orchestration with context propagation
+- Input validation and comprehensive error handling
+- Cache-first strategy with TTL management
+- Async job processing with goroutines
+
+**Domain Layer**
+- Core entities: `Analysis`, `AnalysisResult`, `AnalysisJob`, `LinkAnalysis`
+- Services: `AnalyzerService` with HTML parsing, link checking, performance metrics
+- Repository interfaces: `AnalysisRepository`, `CacheRepository`
+- Status management: pending, processing, completed, failed
+
+**Infrastructure Layer**
+- PostgreSQL with JSONB storage for flexible result data
+- Redis distributed caching with 1-hour TTL
+- HTTP client with configurable timeouts and connection pooling
+- Prometheus metrics collection (request duration, cache hits/misses, connection counts)
+- Database migration system
+
+### Data Flow
+
+**Synchronous Processing:**
+1. Frontend sends URL to `/api/v1/analyze` or `/api/analyze`
+2. Handler validates JSON input and extracts correlation ID
+3. Use case checks Redis cache first for existing results
+4. If cache miss, checks PostgreSQL for recent analysis (within TTL)
+5. Creates new analysis record with status tracking
+6. Analyzer service fetches URL, parses HTML, checks links
+7. Results stored in PostgreSQL, cached in Redis with TTL
+8. Response includes analysis ID, status, and complete results
+
+**Asynchronous Processing:**
+1. Frontend sends URL with `async: true` flag
+2. Handler creates analysis record and returns job ID immediately
+3. Spawns goroutine for background processing
+4. Background process follows same analysis flow
+5. Frontend polls `/api/v1/analysis/{id}` for completion
+6. Job status updates: pending → processing → completed/failed
 
 ## Technology Stack
 
 ### Backend
-- **Language**: Go 1.21+
+- **Language**: Go 
 - **Framework**: Gin for HTTP routing
 - **Database**: PostgreSQL with connection pooling
 - **Cache**: Redis for result caching
@@ -118,7 +166,7 @@ The application follows Clean Architecture principles with clear separation of c
 
 ### Frontend
 - **Framework**: React 18
-- **Styling**: CSS3 with responsive design
+- **Styling**: CSS3
 - **HTTP**: Fetch API for backend communication
 - **Validation**: Client-side URL validation
 
@@ -128,176 +176,150 @@ The application follows Clean Architecture principles with clear separation of c
 - **Monitoring**: Prometheus metrics collection
 - **Health Checks**: Built-in endpoint monitoring
 
-## Design Patterns Implemented
+## Key Design Patterns
 
-### Repository Pattern
-- Abstract data access through interfaces
-- PostgreSQL implementation for analysis storage
-- Redis implementation for caching and queues
+**Repository Pattern**
+- Abstracts data access through interfaces
+- PostgreSQL for analysis storage
+- Redis for caching
 
-### Middleware Chain
-- Request processing pipeline
-- Rate limiting per IP address
-- Structured logging with correlation IDs
-- CORS and security headers
+**Middleware Chain**
+- **Error Handling**: Panic recovery with structured logging
+- **CORS**: Configurable origins with credential support
+- **Correlation ID**: UUID-based request tracking (X-Correlation-ID header)
+- **Authentication**: User identification via X-User-ID header
+- **Logging**: Structured JSON logs with request/response details
+- **Rate Limiting**: Sliding window algorithm (100 req/min per IP)
+- **Request Size Limits**: Configurable maximum request body size
 
-### Strategy Pattern
-- Different analysis modes (sync/async)
-- Configurable timeout and retry strategies
-- Pluggable HTML parsing implementations
-
-## Data Flow
-
-### Synchronous Analysis
-1. Client submits URL via POST /api/v1/analyze
-2. Backend validates URL and checks cache
-3. If not cached, fetches webpage content
-4. Parses HTML and extracts metadata
-5. Stores result in database and cache
-6. Returns analysis result to client
-
-### Asynchronous Analysis
-1. Client submits URL with async flag
-2. Backend creates analysis record and job
-3. Starts Go routine for background processing
-4. Returns job ID for status tracking
-5. Background process updates analysis status
-6. Client polls for completion status
+**Dependency Injection**
+- Clean separation of concerns
+- Testable components
+- Configuration-driven setup
 
 ## Database Schema
 
 ### Analyses Table
-- UUID primary key
-- URL and status tracking
-- JSONB result storage for flexibility
-- Timestamps and user correlation
-- Retry count and priority fields
+- **Primary Key**: UUID for distributed system compatibility
+- **URL Tracking**: Original URL with normalization
+- **Status Management**: pending, processing, completed, failed states
+- **Result Storage**: JSONB for flexible schema evolution
+- **Audit Fields**: created_at, updated_at timestamps
+- **User Correlation**: user_id and correlation_id for request tracking
+- **Error Handling**: Dedicated error message field
+- **Performance**: Indexes on URL, status, user_id, created_at
 
 ### Caching Strategy
-- Redis-based result caching
-- Configurable TTL (default: 1 hour)
+- Redis result caching with 1-hour TTL
 - Cache key format: `analysis:{url}`
-- Automatic cache invalidation
+- Avoids duplicate analysis work
+- Cache hit/miss metrics tracked
 
-## Performance Considerations
+## Performance Features
 
-### Connection Pooling
-- PostgreSQL connection limits
-- Redis connection pooling
+**Connection Management**
+- PostgreSQL connection pooling
 - HTTP client connection reuse
-- Graceful connection cleanup
+- Configurable timeouts and limits
 
-### Rate Limiting
-- Per-IP request limiting
-- Configurable window and count
-- Sliding window implementation
-- Automatic cleanup of expired entries
+**Rate Limiting**
+- **Algorithm**: Sliding window with automatic cleanup
+- **Limits**: 100 requests per minute per IP (configurable)
+- **Storage**: In-memory visitor tracking with mutex protection
+- **Cleanup**: Background goroutine removes expired entries
+- **Response**: HTTP 429 with retry information
+- **Monitoring**: Rate limit violations logged and tracked
 
-### Timeout Handling
-- Request timeout middleware
-- Configurable analysis timeouts
-- Graceful degradation on failures
-- HTTP client with proper timeout handling
+**Timeout Configuration**
+- HTTP request timeouts (30s default)
+- Server read/write timeouts (30s default)
+- Link checking timeouts (5s default)
+- Analysis processing limits
 
-## Security Implementation
+## Security
+- URL format validation
+- Request size limits  
+- CORS configuration
+- Rate limiting per IP
+- SQL injection prevention
 
-### Input Validation
-- URL format validation (scheme, host checking)
-- Content length limits with MaxBytesReader
-- Basic request size validation
-- SQL injection prevention through parameterized queries
+## Monitoring
 
-### Authentication
-- User ID header support (X-User-ID)
-- Anonymous user handling
-- Correlation ID tracking
-- Request logging and monitoring
-
-### CORS Configuration
-- Frontend origin allowance
-- Method and header restrictions
-- Preflight request handling
-- Basic security headers
-
-### Security Gaps & Improvements
-- **Could Add**: XSS protection and HTML sanitization
-- **Could Add**: Advanced security headers (CSP, HSTS, etc.)
-- **Could Add**: Input content sanitization beyond URL format
-- **Could Add**: Rate limiting per user (currently only per IP)
-- **Could Add**: Request signature validation
-- **Could Add**: API key authentication
-
-## Monitoring and Observability
-
-### Prometheus Metrics
-- HTTP request duration and count
-- Analysis job metrics
-- Cache hit/miss rates
-- Database connection status
-
-### Structured Logging
-- JSON format for parsing
-- Correlation ID tracking
-- User and request context
-- Error stack traces
-
-### Health Checks
+**Health Checks**
 - Database connectivity
 - Redis availability
 - Service readiness
-- External dependency status
 
-## Error Handling Strategy
+**Logging**
+- Structured JSON logs
+- Request correlation IDs
+- Error tracking
 
-### Graceful Degradation
-- Partial result returns
-- Fallback error messages
-- Timeout handling
-- HTTP client error handling
+**Metrics**
+- Prometheus integration with custom metrics:
+  - `http_request_duration_seconds` - Request latency histogram
+  - `http_requests_total` - Total request counter by method/endpoint/status
+  - `cache_hits_total` / `cache_misses_total` - Cache performance
+  - `database_connections_active` - PostgreSQL connection pool
+  - `redis_connections_active` - Redis connection monitoring
+  - `queue_length` - Job queue metrics
 
-### Error Propagation
-- Structured error types
-- Context preservation
-- Stack trace logging
-- Client-friendly messages
+## Async Processing
 
-## Testing Strategy
+The current implementation uses simple Go routines for background processing:
 
-### Unit Tests
-- Mock implementations
-- No real HTTP requests
-- Fast execution times
+**Implementation Details:**
+1. **Job Submission**: `SubmitAnalysisJob` creates analysis record and returns job/analysis IDs
+2. **Background Processing**: `ProcessAnalysisAsync` spawns goroutine with 5-minute timeout
+3. **Context Management**: Proper context propagation with correlation/user IDs
+4. **Cache Integration**: Checks Redis cache before performing analysis
+5. **Status Updates**: Database updates with completion status and results
+6. **Error Handling**: Failed jobs marked with error messages
 
-### Integration Tests
-- Database connectivity
-- Redis operations
-- API endpoint validation
-- End-to-end workflows
+**Frontend Integration:**
+- Job submission returns immediately with pending status
+- Polling mechanism checks job status every few seconds
+- Real-time UI updates show job progress
+- Completed jobs display full analysis results
 
-### Test Coverage
-- Domain entities
-- Application layer: Basic structure
-- Presentation layer: HTTP handling
-- Middleware: Core functionality
+**Current Limitations:**
+- **Persistence**: Jobs lost on server restart (no persistent queue)
+- **Scalability**: Single-instance only, no distributed processing
+- **Priority**: No job prioritization or queue management
+- **Recovery**: No retry mechanism for failed jobs
+- **Monitoring**: Limited job lifecycle tracking
 
-## Deployment Architecture
+This approach works well for the current scope but could be enhanced with persistent job queues for production use.
 
-### Development Environment
-- Docker Compose for services
+## Configuration
+
+The system uses YAML configuration with environment variable overrides:
+
+- Analysis timeouts and limits
+- Database and Redis settings
+- Rate limiting parameters
+- Logging levels
+
+See `config/config.yaml` for all available options.
+
+## Deployment
+
+**Development:**
+- Docker Compose setup
 - Local port mapping
-- Hot reload for development
-- Environment-specific configs
+- Hot reload support
 
-### Production Considerations
+**Production Ready:**
 - Multi-container deployment
-- Health check monitoring
-- Resource limits and scaling
-- Backup and recovery
+- Health check endpoints
+- Prometheus metrics collection
+- Resource limits and monitoring
+
+This architecture provides a solid foundation for web page analysis while keeping things simple and maintainable.
 
 ## Scalability Features
 
 ### Horizontal Scaling
-- Stateless API design
 - Shared database and cache
 - Load balancer ready
 - Container orchestration support
@@ -316,55 +338,38 @@ The application follows Clean Architecture principles with clear separation of c
 
 ## Future Improvements
 
+### Async Processing Enhancements
+- **Persistent Job Queue**: Replace simple goroutines with Redis-based job queue
+- **Worker Pool Management**: Implement dedicated worker processes for job processing
+- **Job Recovery**: Add job persistence to survive server restarts
+- **Retry Logic**: Implement exponential backoff for failed jobs
+- **Job Monitoring**: Add job status tracking and progress indicators
+
 ### Technical Enhancements
 - GraphQL API support
 - WebSocket real-time updates
 - Advanced caching strategies
 - Microservice decomposition
+- Circuit breaker pattern for external requests
 
 ### Feature Additions
-- User authentication
-- Job history tracking
-- Batch processing
-- Result export options
+- User authentication and authorization
+- Job history tracking and analytics
+- Batch processing for multiple URLs
+- Result export options (CSV, JSON, PDF)
+- Real-time job status updates via WebSocket
 
 ### Performance Optimization
 - Connection pooling improvements
-- Query optimization
-- Background job optimization
-- Memory usage optimization
+- Query optimization and database indexing
+- Background job optimization with priority queues
+- Memory usage optimization and garbage collection tuning
+- Horizontal scaling with load balancers
 
-## Configuration Management
+### Current Limitations
+- **Async Processing**: Currently uses simple goroutines, not production-ready
+- **Job Persistence**: Jobs are lost on server restart
+- **Queue Management**: No priority handling or job distribution
+- **Scalability**: Single-instance design, not horizontally scalable
 
-### Environment Variables
-- Database connection strings
-- Redis configuration
-- Logging levels
-- Feature flags
-
-### Configuration Files
-- YAML-based configuration
-- Environment-specific overrides
-- Default value management
-- Validation and error handling
-
-## Development Workflow
-
-### Code Organization
-- Interface definitions
-- Dependency management
-- Testing strategy
-
-### Build Process
-- Multi-stage Docker builds
-- Go module management
-- Frontend build optimization
-- Asset compilation
-
-### Deployment Pipeline
-- Docker image building
-- Service orchestration
-- Health check validation
-- Rollback procedures
-
-This architecture provides Architecture foundation for a scalable web page analysis system while maintaining simplicity and maintainability.
+This architecture provides a solid foundation for web page analysis while keeping things simple and maintainable.

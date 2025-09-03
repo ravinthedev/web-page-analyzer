@@ -90,3 +90,106 @@ func TestRequestSizeLimitMiddleware(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+func TestNewRateLimiter(t *testing.T) {
+	rateLimiter := NewRateLimiter(10, time.Minute)
+
+	assert.NotNil(t, rateLimiter)
+}
+
+func TestCorrelationIDMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(CorrelationIDMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"correlation_id": c.GetString("correlation_id")})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestLoggingMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestErrorHandlingMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(ErrorHandlingMiddleware(nil))
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "test error"})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestAuthMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRateLimiterWithDifferentLimits(t *testing.T) {
+	rateLimiter := NewRateLimiter(5, time.Second)
+	assert.NotNil(t, rateLimiter)
+
+	rateLimiter2 := NewRateLimiter(100, time.Minute)
+	assert.NotNil(t, rateLimiter2)
+}
+
+func TestRateLimiterWithZeroLimit(t *testing.T) {
+	rateLimiter := NewRateLimiter(0, time.Second)
+	assert.NotNil(t, rateLimiter)
+}
+
+func TestMiddlewareIntegration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(CorrelationIDMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}

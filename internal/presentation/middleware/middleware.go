@@ -236,32 +236,6 @@ func RequestSizeLimitMiddleware(maxSize int64) gin.HandlerFunc {
 	}
 }
 
-func TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-		defer cancel()
-
-		c.Request = c.Request.WithContext(ctx)
-
-		done := make(chan struct{})
-		go func() {
-			c.Next()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			c.JSON(http.StatusRequestTimeout, gin.H{
-				"error":   "Request timeout",
-				"timeout": timeout.String(),
-			})
-			c.Abort()
-		}
-	}
-}
-
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetHeader("X-User-ID")

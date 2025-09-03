@@ -24,7 +24,16 @@ type AnalyzerService interface {
 type analyzerService struct {
 	httpClient HTTPClient
 	parser     HTMLParser
-	semaphore  chan struct{} // limit concurrent checks
+	semaphore  chan struct{}
+	config     *AnalyzerConfig
+}
+
+type AnalyzerConfig struct {
+	LinkCheckTimeout        time.Duration
+	MaxLinksToCheck         int
+	MaxConcurrentLinkChecks int
+	MaxHTMLDepth            int
+	MaxURLLength            int
 }
 
 type HTTPClient interface {
@@ -68,7 +77,8 @@ func contains(slice []string, item string) bool {
 }
 
 type HTMLParser interface {
-	Parse(content string, baseURL string) (*ParsedHTML, error)
+	Parse(html, baseURL string) (*ParsedHTML, error)
+	SetLinkCheckTimeout(timeout time.Duration)
 }
 
 type ParsedHTML struct {
@@ -86,15 +96,19 @@ type Link struct {
 	IsAccessible bool   `json:"is_accessible"`
 }
 
-func NewAnalyzerService(httpClient HTTPClient, parser HTMLParser, maxConcurrentChecks int) AnalyzerService {
-	if maxConcurrentChecks <= 0 {
-		maxConcurrentChecks = 10
+func NewAnalyzerService(httpClient HTTPClient, parser HTMLParser, config *AnalyzerConfig) AnalyzerService {
+	if config.MaxConcurrentLinkChecks <= 0 {
+		config.MaxConcurrentLinkChecks = 10
 	}
+
+	// Configure the parser with the timeout
+	parser.SetLinkCheckTimeout(config.LinkCheckTimeout)
 
 	return &analyzerService{
 		httpClient: httpClient,
 		parser:     parser,
-		semaphore:  make(chan struct{}, maxConcurrentChecks),
+		semaphore:  make(chan struct{}, config.MaxConcurrentLinkChecks),
+		config:     config,
 	}
 }
 
@@ -103,8 +117,8 @@ func (s *analyzerService) ValidateURL(targetURL string) error {
 		return fmt.Errorf("URL cannot be empty")
 	}
 
-	if len(targetURL) > MaxURLLength {
-		return fmt.Errorf("URL too long (max %d characters)", MaxURLLength)
+	if len(targetURL) > s.config.MaxURLLength {
+		return fmt.Errorf("URL too long (max %d characters)", s.config.MaxURLLength)
 	}
 
 	u, err := url.Parse(targetURL)
@@ -267,13 +281,16 @@ func (s *analyzerService) analyzeLinkAccessibility(ctx context.Context, links []
 	hostMap := make(map[string]bool)
 	var mu sync.Mutex
 
+	if len(links) > s.config.MaxLinksToCheck {
+		links = links[:s.config.MaxLinksToCheck]
+	}
+
 	var wg sync.WaitGroup
 	for _, link := range links {
 		wg.Add(1)
 		go func(l Link) {
 			defer wg.Done()
 
-			// limit concurrent checks
 			select {
 			case s.semaphore <- struct{}{}:
 				defer func() { <-s.semaphore }()
@@ -315,16 +332,22 @@ func (s *analyzerService) analyzeLinkAccessibility(ctx context.Context, links []
 }
 
 type htmlParser struct {
-	httpClient HTTPClient
-	urlCache   map[string]bool // cache results
-	mu         sync.RWMutex
+	httpClient       HTTPClient
+	urlCache         map[string]bool
+	mu               sync.RWMutex
+	linkCheckTimeout time.Duration
 }
 
 func NewHTMLParser(httpClient HTTPClient) HTMLParser {
 	return &htmlParser{
-		httpClient: httpClient,
-		urlCache:   make(map[string]bool),
+		httpClient:       httpClient,
+		urlCache:         make(map[string]bool),
+		linkCheckTimeout: DefaultLinkCheckTimeout,
 	}
+}
+
+func (p *htmlParser) SetLinkCheckTimeout(timeout time.Duration) {
+	p.linkCheckTimeout = timeout
 }
 
 func (p *htmlParser) Parse(content string, baseURL string) (*ParsedHTML, error) {
@@ -552,7 +575,7 @@ func (p *htmlParser) checkLinkAccessibility(href string, baseURL string) bool {
 	}
 	p.mu.RUnlock()
 
-	accessible := p.checkHTTPLink(fullURL)
+	accessible := p.checkHTTPLink(fullURL, p.linkCheckTimeout)
 
 	// cache result
 	p.mu.Lock()
@@ -562,9 +585,8 @@ func (p *htmlParser) checkLinkAccessibility(href string, baseURL string) bool {
 	return accessible
 }
 
-func (p *htmlParser) checkHTTPLink(url string) bool {
-	// change timeout here if needed
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultLinkCheckTimeout)
+func (p *htmlParser) checkHTTPLink(url string, timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, HTTPMethodHEAD, url, nil)
@@ -575,7 +597,16 @@ func (p *htmlParser) checkHTTPLink(url string) bool {
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Accept", "*/*")
 
-	resp, err := p.httpClient.GetWithContext(ctx, url)
+	client := &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     30 * time.Second,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}

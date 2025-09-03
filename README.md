@@ -22,7 +22,7 @@ A simple web application that analyzes web pages to extract useful information l
    docker compose build
    ``` 
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 3. Access the application:
    - Frontend: http://localhost:3000
@@ -102,9 +102,39 @@ A simple web application that analyzes web pages to extract useful information l
 
 For detailed technical architecture, design patterns, and implementation details, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
+## Configuration
+
+The application can be configured through `config/config.yaml` and environment variables. Key configuration parameters include:
+
+### Analysis Settings
+- `analysis.request_timeout` - HTTP request timeout for web page fetching (default: 30s)
+- `analysis.max_content_length` - Maximum HTML content size to process (default: 10MB)
+- `analysis.cache_ttl` - Cache time-to-live for analysis results (default: 1h)
+- `analysis.link_check_timeout` - Timeout for checking link accessibility (default: 5s)
+- `analysis.max_links_to_check` - Maximum number of links to check per page (default: 50)
+- `analysis.max_concurrent_link_checks` - Concurrent link checks limit (default: 10)
+- `analysis.max_html_depth` - Maximum HTML parsing depth (default: 100)
+- `analysis.max_url_length` - Maximum URL length allowed (default: 2048)
+
+### Rate Limiting
+- `analysis.rate_limit_per_ip` - Requests per IP per window (default: 100)
+- `analysis.rate_limit_window` - Rate limiting time window (default: 1m)
+
+### Database & Cache
+- `database.*` - PostgreSQL connection settings
+- `redis.*` - Redis connection and cache settings
+
+### Server Settings
+- `server.port` - HTTP server port (default: 8080)
+- `server.read_timeout` - Server read timeout (default: 30s)
+- `server.write_timeout` - Server write timeout (default: 30s)
+
+Environment variables can override any config value using the format: `SECTION_KEY` (e.g., `ANALYSIS_REQUEST_TIMEOUT=45s`).
+
 ## Development
 
-- Run tests: `./test-coverage.sh`
+- Run tests: `go test ./...`
+- Run tests with coverage: `go test -cover ./...`
 - Build: `go build ./cmd/api`
 - Docker build: `docker compose build`
 
