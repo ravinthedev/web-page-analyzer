@@ -7,8 +7,8 @@ const (
 	MaxURLLength               = 2048
 	MaxHTMLDepth               = 100
 	DefaultMaxConcurrentChecks = 10
-	DefaultRequestTimeout      = 30 * time.Second
-	DefaultLinkCheckTimeout    = 10 * time.Second
+	DefaultRequestTimeout      = 60 * time.Second
+	DefaultLinkCheckTimeout    = 20 * time.Second
 	UserAgent                  = "WebPageAnalyzer/1.0"
 
 	// HTTP methods

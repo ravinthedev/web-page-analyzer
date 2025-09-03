@@ -136,7 +136,7 @@ func (s *analyzerService) createDetailedError(err error, targetURL string) error
 	}
 
 	if strings.Contains(err.Error(), "context deadline exceeded") {
-		return fmt.Errorf("context deadline exceeded while accessing %s", targetURL)
+		return fmt.Errorf("context deadline exceeded")
 	}
 
 	if strings.Contains(err.Error(), "context canceled") {
@@ -146,7 +146,7 @@ func (s *analyzerService) createDetailedError(err error, targetURL string) error
 	switch e := err.(type) {
 	case *url.Error:
 		if e.Timeout() {
-			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+			return fmt.Errorf("connection timeout exceeded")
 		}
 		if netErr, ok := e.Err.(net.Error); ok {
 			if netErr.Timeout() {
@@ -157,9 +157,9 @@ func (s *analyzerService) createDetailedError(err error, targetURL string) error
 
 	case net.Error:
 		if e.Timeout() {
-			return fmt.Errorf("connection timeout exceeded while accessing %s", targetURL)
+			return fmt.Errorf("connection timeout exceeded")
 		}
-		return fmt.Errorf("network error while accessing %s: %v", targetURL, e)
+		return fmt.Errorf("network error: %v", e)
 
 	default:
 		return s.classifyNetworkError(err.Error(), targetURL)
