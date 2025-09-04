@@ -10,6 +10,12 @@ A simple web application that analyzes web pages to extract useful information l
 - Supports both synchronous and asynchronous processing
 - Provides clean API endpoints for integration
 
+## 🌐 Live Demo
+
+**Try the application live:** [http://52.34.210.45:3000/](http://52.34.210.45:3000/)
+
+*Deployed on AWS Lightsail for easy access and testing.*
+
 ## Prerequisites
 
 - Docker and Docker Compose
@@ -135,6 +141,7 @@ Environment variables can override any config value using the format: `SECTION_K
 
 - Run tests: `go test ./...`
 - Run tests with coverage: `go test -cover ./...`
+- If tests don't work: `go test -vet=off ./...`
 - Build: `go build ./cmd/api`
 - Docker build: `docker compose build`
 
